@@ -273,7 +273,11 @@ router.put("/documents/:id/fields", requireAuth, async (req: Request, res: Respo
 router.get("/documents/:id/download", requireAuth, async (req: Request, res: Response) => {
   const id = req.params.id as string;
   try {
-    const docs = await db.select().from(documentsTable).where(eq(documentsTable.id, id)).limit(1);
+    const docs = await db
+      .select()
+      .from(documentsTable)
+      .where(and(eq(documentsTable.id, id), eq(documentsTable.uploadedBy, req.session.userId!)))
+      .limit(1);
     const doc = docs[0];
     if (!doc || !fs.existsSync(doc.filepath)) {
       res.status(404).json({ error: "Document not found" });
@@ -360,10 +364,18 @@ router.delete("/documents/:id", requireAuth, async (req: Request, res: Response)
 router.get("/documents/:id/status", requireAuth, async (req: Request, res: Response) => {
   const id = req.params.id as string;
   try {
-    const docs = await db.select().from(documentsTable).where(eq(documentsTable.id, id)).limit(1);
+    const docs = await db
+      .select()
+      .from(documentsTable)
+      .where(and(eq(documentsTable.id, id), eq(documentsTable.uploadedBy, req.session.userId!)))
+      .limit(1);
+    if (docs.length === 0) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
     const recipients = await db.select().from(recipientsTable).where(eq(recipientsTable.documentId, id));
     recipients.sort((a, b) => a.signOrder - b.signOrder);
-    res.json({ recipients, status: docs[0]?.status ?? "unknown" });
+    res.json({ recipients, status: docs[0].status });
   } catch (err) {
     req.log.error({ err }, "get document status error");
     res.status(500).json({ error: "Internal server error" });

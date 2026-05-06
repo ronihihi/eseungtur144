@@ -123,7 +123,15 @@ router.post("/recipients/:recipientId/remind", requireAuth, async (req: Request,
       return;
     }
 
-    const docs = await db.select().from(documentsTable).where(eq(documentsTable.id, r.documentId)).limit(1);
+    const docs = await db
+      .select()
+      .from(documentsTable)
+      .where(and(eq(documentsTable.id, r.documentId), eq(documentsTable.uploadedBy, req.session.userId!)))
+      .limit(1);
+    if (docs.length === 0) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
     const doc = docs[0];
 
     const host = req.get("host") || "localhost";
