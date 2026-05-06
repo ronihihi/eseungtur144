@@ -61,49 +61,75 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/*
+  SOS brand tokens
+  --sos-blue:         #009EE0  → 198 100% 44%
+  --sos-blue-hover:   #007bc0  → 202 100% 38%
+  --sos-red:          #E74361  → 349  77% 58%
+  --sos-green:        #5fd47c  → 135  58% 60%
+  --sos-accent:       #efb828  →  43  86% 55%
+  --sos-dark:         #00192d  → 207 100%  9%
+  --sos-dark-lighter: #003352  → 203 100% 16%
+*/
+
 :root {
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
+  /* ── base ── */
+  --background: 207 33% 97%;
+  --foreground: 207 100% 9%;
+
+  /* ── card / popover (white surfaces) ── */
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --card-border: 214.3 31.8% 91.4%;
+  --card-foreground: 207 100% 9%;
+  --card-border: 207 25% 89%;
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --popover-border: 214.3 31.8% 91.4%;
-  --primary: 222 47% 11%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222 47% 11%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 222 47% 11%;
+  --popover-foreground: 207 100% 9%;
+  --popover-border: 207 25% 89%;
 
-  --sidebar: 210 40% 98%;
-  --sidebar-foreground: 222 47% 11%;
-  --sidebar-border: 214.3 31.8% 91.4%;
-  --sidebar-primary: 222 47% 11%;
-  --sidebar-primary-foreground: 210 40% 98%;
-  --sidebar-accent: 210 40% 96.1%;
-  --sidebar-accent-foreground: 222 47% 11%;
-  --sidebar-ring: 222 47% 11%;
+  /* ── primary = SOS blue ── */
+  --primary: 198 100% 44%;
+  --primary-foreground: 0 0% 100%;
 
+  /* ── secondary / muted / accent (neutral cool-blue tints) ── */
+  --secondary: 207 30% 93%;
+  --secondary-foreground: 207 100% 9%;
+  --muted: 207 25% 93%;
+  --muted-foreground: 207 25% 42%;
+  --accent: 207 30% 93%;
+  --accent-foreground: 207 100% 9%;
+
+  /* ── destructive = SOS red ── */
+  --destructive: 349 77% 58%;
+  --destructive-foreground: 0 0% 100%;
+
+  /* ── borders / inputs / ring ── */
+  --border: 207 25% 87%;
+  --input: 207 25% 87%;
+  --ring: 198 100% 44%;
+
+  /* ── sidebar (uses same light palette) ── */
+  --sidebar: 207 33% 97%;
+  --sidebar-foreground: 207 100% 9%;
+  --sidebar-border: 207 25% 89%;
+  --sidebar-primary: 198 100% 44%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 207 30% 93%;
+  --sidebar-accent-foreground: 207 100% 9%;
+  --sidebar-ring: 198 100% 44%;
+
+  /* ── typography / radius ── */
   --app-font-sans: 'Inter', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
   --radius: 0.5rem;
 
-  --chart-1: 221.2 83.2% 53.3%;
-  --chart-2: 212 95% 68%;
-  --chart-3: 216 92% 60%;
-  --chart-4: 210 98% 78%;
-  --chart-5: 212 97% 87%;
+  /* ── charts (SOS palette) ── */
+  --chart-1: 198 100% 44%;
+  --chart-2: 135  58% 60%;
+  --chart-3:  43  86% 55%;
+  --chart-4: 349  77% 58%;
+  --chart-5: 203 100% 16%;
 
+  /* ── component internals ── */
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
   --opaque-button-border-intensity: -8;
@@ -118,42 +144,55 @@
 }
 
 .dark {
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
-  --card: 222 47% 11%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 217.2 32.6% 17.5%;
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217.2 32.6% 17.5%;
-  --primary: 210 40% 98%;
-  --primary-foreground: 222 47% 11%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 212.7 26.8% 83.9%;
+  /* ── base = SOS dark ── */
+  --background: 207 100% 9%;
+  --foreground: 207 20% 94%;
 
-  --sidebar: 222 47% 11%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 217.2 32.6% 17.5%;
-  --sidebar-primary: 210 40% 98%;
-  --sidebar-primary-foreground: 222 47% 11%;
-  --sidebar-accent: 217.2 32.6% 17.5%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 212.7 26.8% 83.9%;
+  /* ── card / popover (SOS dark-lighter) ── */
+  --card: 203 100% 13%;
+  --card-foreground: 207 20% 94%;
+  --card-border: 203 60% 20%;
+  --popover: 203 100% 13%;
+  --popover-foreground: 207 20% 94%;
+  --popover-border: 203 60% 20%;
 
-  --chart-1: 212 95% 68%;
-  --chart-2: 216 92% 60%;
-  --chart-3: 210 98% 78%;
-  --chart-4: 212 97% 87%;
-  --chart-5: 221.2 83.2% 53.3%;
+  /* ── primary = SOS blue (same in dark) ── */
+  --primary: 198 100% 44%;
+  --primary-foreground: 0 0% 100%;
+
+  /* ── secondary / muted / accent ── */
+  --secondary: 203 100% 16%;
+  --secondary-foreground: 207 20% 94%;
+  --muted: 203 80% 14%;
+  --muted-foreground: 207 25% 60%;
+  --accent: 203 100% 16%;
+  --accent-foreground: 207 20% 94%;
+
+  /* ── destructive = SOS red (darker in dark mode) ── */
+  --destructive: 349 65% 45%;
+  --destructive-foreground: 0 0% 100%;
+
+  /* ── borders / inputs / ring ── */
+  --border: 203 60% 20%;
+  --input: 203 60% 20%;
+  --ring: 198 100% 55%;
+
+  /* ── sidebar ── */
+  --sidebar: 207 100% 9%;
+  --sidebar-foreground: 207 20% 94%;
+  --sidebar-border: 203 60% 20%;
+  --sidebar-primary: 198 100% 44%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 203 100% 16%;
+  --sidebar-accent-foreground: 207 20% 94%;
+  --sidebar-ring: 198 100% 55%;
+
+  /* ── charts ── */
+  --chart-1: 198 100% 55%;
+  --chart-2: 135  58% 65%;
+  --chart-3:  43  86% 62%;
+  --chart-4: 349  77% 65%;
+  --chart-5: 198 100% 75%;
 
   --button-outline: rgba(255,255,255, .10);
   --badge-outline: rgba(255,255,255, .05);
