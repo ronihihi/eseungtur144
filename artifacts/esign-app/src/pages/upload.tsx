@@ -160,9 +160,11 @@ export function UploadPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <Link href="/" className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-foreground mb-5 transition-colors">
-          <ArrowLeft className="mr-1.5 h-4 w-4" />
-          Back to Dashboard
+        <Link href="/">
+          <Button variant="outline" size="sm" className="mb-5 gap-1.5">
+            <ArrowLeft className="h-4 w-4" />
+            Home
+          </Button>
         </Link>
         <h1 className="text-2xl font-bold tracking-tight">Upload Document</h1>
         <p className="text-muted-foreground mt-1">Upload a PDF or Word document to start collecting signatures.</p>

@@ -356,9 +356,11 @@ export function DocumentDetailPage() {
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div>
-        <Link href="/" className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-primary mb-4 transition-colors">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Dashboard
+        <Link href="/">
+          <Button variant="outline" size="sm" className="mb-4 gap-1.5">
+            <ArrowLeft className="h-4 w-4" />
+            Home
+          </Button>
         </Link>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
