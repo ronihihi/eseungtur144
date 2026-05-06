@@ -29,11 +29,19 @@ export interface LoginRequest {
   password: string;
 }
 
+export type UserRole = (typeof UserRole)[keyof typeof UserRole];
+
+export const UserRole = {
+  admin: "admin",
+  user: "user",
+} as const;
+
 export interface User {
   id: string;
   name: string;
   email: string;
   hasSavedSignature: boolean;
+  role: UserRole;
 }
 
 export interface AuthResponse {
@@ -187,6 +195,66 @@ export interface SubmitSignatureRequest {
   fullName: string;
   /** Base64-encoded signature image */
   signatureData: string;
+}
+
+export interface AzureEnabledResponse {
+  enabled: boolean;
+}
+
+export type AdminUserRole = (typeof AdminUserRole)[keyof typeof AdminUserRole];
+
+export const AdminUserRole = {
+  admin: "admin",
+  user: "user",
+} as const;
+
+export type AdminUserProvider =
+  (typeof AdminUserProvider)[keyof typeof AdminUserProvider];
+
+export const AdminUserProvider = {
+  local: "local",
+  azure: "azure",
+} as const;
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  role: AdminUserRole;
+  provider: AdminUserProvider;
+  createdAt: string;
+}
+
+export interface AdminUserListResponse {
+  users: AdminUser[];
+}
+
+export type CreateUserRequestRole =
+  (typeof CreateUserRequestRole)[keyof typeof CreateUserRequestRole];
+
+export const CreateUserRequestRole = {
+  admin: "admin",
+  user: "user",
+} as const;
+
+export interface CreateUserRequest {
+  name: string;
+  email: string;
+  /** @minLength 6 */
+  password: string;
+  role?: CreateUserRequestRole;
+}
+
+export type UpdateRoleRequestRole =
+  (typeof UpdateRoleRequestRole)[keyof typeof UpdateRoleRequestRole];
+
+export const UpdateRoleRequestRole = {
+  admin: "admin",
+  user: "user",
+} as const;
+
+export interface UpdateRoleRequest {
+  role: UpdateRoleRequestRole;
 }
 
 export type UploadDocumentBodySigningOrder =

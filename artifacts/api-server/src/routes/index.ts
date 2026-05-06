@@ -4,6 +4,7 @@ import authRouter from "./auth";
 import documentsRouter from "./documents";
 import recipientsRouter from "./recipients";
 import signingRouter from "./signing";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(authRouter);
 router.use(documentsRouter);
 router.use(recipientsRouter);
 router.use(signingRouter);
+router.use(adminRouter);
 
 export default router;

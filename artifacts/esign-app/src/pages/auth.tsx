@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useLogin, useRegister, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useLogin, useRegister, useGetAzureEnabled, getGetMeQueryKey } from "@workspace/api-client-react";
 import type { MeResponse } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -24,16 +24,46 @@ const registerSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
+function MicrosoftIcon() {
+  return (
+    <svg className="h-4 w-4 mr-2" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+      <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+    </svg>
+  );
+}
+
 export function AuthPage() {
   const [, setLocation] = useLocation();
   const search = useSearch();
-  const redirectTo = new URLSearchParams(search).get("redirect") || "/";
+  const params = new URLSearchParams(search);
+  const redirectTo = params.get("redirect") || "/";
+  const urlError = params.get("error");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isLogin, setIsLogin] = useState(true);
 
   const loginMutation = useLogin();
   const registerMutation = useRegister();
+  const { data: azureConfig } = useGetAzureEnabled();
+
+  useEffect(() => {
+    if (urlError) {
+      const messages: Record<string, string> = {
+        invalid_state: "Sign-in session expired. Please try again.",
+        azure_failed: "Microsoft sign-in failed. Please try again.",
+        access_denied: "Access was denied. Please contact your administrator.",
+      };
+      toast({
+        variant: "destructive",
+        title: "Sign-in error",
+        description: messages[urlError] ?? "An error occurred during sign-in.",
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -83,6 +113,10 @@ export function AuthPage() {
     );
   };
 
+  const handleMicrosoftSignIn = () => {
+    window.location.href = "/api/auth/azure";
+  };
+
   return (
     <div className="min-h-[100dvh] flex items-center justify-center bg-muted/30 p-4">
       <div className="w-full max-w-md space-y-6">
@@ -105,7 +139,29 @@ export function AuthPage() {
                 : "Enter your details to get started"}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {azureConfig?.enabled && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleMicrosoftSignIn}
+                >
+                  <MicrosoftIcon />
+                  Sign in with Microsoft
+                </Button>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                  </div>
+                </div>
+              </>
+            )}
+
             {isLogin ? (
               <Form {...loginForm}>
                 <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
@@ -189,7 +245,7 @@ export function AuthPage() {
               </Form>
             )}
 
-            <div className="mt-6 text-center text-sm">
+            <div className="text-center text-sm">
               <span className="text-muted-foreground">
                 {isLogin ? "Don't have an account? " : "Already have an account? "}
               </span>

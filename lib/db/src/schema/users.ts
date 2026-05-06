@@ -6,8 +6,10 @@ export const usersTable = pgTable("users", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  password: text("password").notNull(),
-  role: text("role").notNull().default("admin"),
+  password: text("password"), // nullable for Azure SSO users
+  role: text("role").notNull().default("user"),
+  provider: text("provider").notNull().default("local"), // 'local' | 'azure'
+  azureId: text("azure_id").unique(),
   signatureData: text("signature_data"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

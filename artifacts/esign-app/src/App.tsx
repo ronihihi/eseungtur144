@@ -12,6 +12,7 @@ import { DashboardPage } from "@/pages/dashboard";
 import { UploadPage } from "@/pages/upload";
 import { DocumentDetailPage } from "@/pages/document-detail";
 import { SignPage } from "@/pages/sign";
+import { AdminUsersPage } from "@/pages/admin-users";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -54,6 +55,28 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   );
 }
 
+function AdminRoute({ component: Component }: { component: React.ComponentType }) {
+  const { data: me, isLoading } = useGetMe();
+  const [location] = useLocation();
+
+  if (isLoading) return <LoadingScreen />;
+
+  if (!me?.user) {
+    const redirect = encodeURIComponent(location);
+    return <Redirect to={`/auth?redirect=${redirect}`} />;
+  }
+
+  if (me.user.role !== "admin") {
+    return <Redirect to="/" />;
+  }
+
+  return (
+    <Layout>
+      <Component />
+    </Layout>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -67,6 +90,9 @@ function Router() {
       </Route>
       <Route path="/documents/:id">
         <ProtectedRoute component={DocumentDetailPage} />
+      </Route>
+      <Route path="/admin/users">
+        <AdminRoute component={AdminUsersPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>

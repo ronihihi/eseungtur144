@@ -13,13 +13,15 @@ A full-stack DocuSign-style e-signature app where teams upload PDFs, place signa
 - Required env: `DATABASE_URL` — Postgres connection string (auto-provisioned)
 - Required env: `SESSION_SECRET` — already set in secrets
 - Optional env: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` — for sending real emails
+- Optional env: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` — enables Microsoft SSO button
+- Optional env: `AZURE_REDIRECT_URI` — override OAuth callback URL (defaults to `{host}/api/auth/azure/callback`)
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5 + express-session (session-based auth)
 - DB: PostgreSQL + Drizzle ORM
-- Auth: bcryptjs password hashing, express-session
+- Auth: bcryptjs password hashing, express-session; Azure AD OAuth2 (raw fetch, no extra lib)
 - Email: nodemailer (SMTP; skips silently if not configured)
 - File uploads: multer (stored in `uploads/` on disk)
 - PDF viewer: react-pdf (pdfjs-dist worker served from `public/pdf.worker.min.mjs`)

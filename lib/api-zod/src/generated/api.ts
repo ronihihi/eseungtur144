@@ -32,6 +32,7 @@ export const RegisterResponse = zod.object({
     name: zod.string(),
     email: zod.string(),
     hasSavedSignature: zod.boolean(),
+    role: zod.enum(["admin", "user"]),
   }),
 });
 
@@ -50,6 +51,7 @@ export const LoginResponse = zod.object({
     name: zod.string(),
     email: zod.string(),
     hasSavedSignature: zod.boolean(),
+    role: zod.enum(["admin", "user"]),
   }),
 });
 
@@ -71,6 +73,7 @@ export const GetMeResponse = zod.object({
         name: zod.string(),
         email: zod.string(),
         hasSavedSignature: zod.boolean(),
+        role: zod.enum(["admin", "user"]),
       }),
       zod.null(),
     ])
@@ -366,5 +369,70 @@ export const SubmitSignatureBody = zod.object({
 });
 
 export const SubmitSignatureResponse = zod.object({
+  success: zod.boolean(),
+});
+
+/**
+ * @summary Check if Azure SSO is configured
+ */
+export const GetAzureEnabledResponse = zod.object({
+  enabled: zod.boolean(),
+});
+
+/**
+ * @summary List all users (admin only)
+ */
+export const ListAdminUsersResponse = zod.object({
+  users: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      email: zod.string(),
+      role: zod.enum(["admin", "user"]),
+      provider: zod.enum(["local", "azure"]),
+      createdAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Create a user (admin only)
+ */
+export const createAdminUserBodyPasswordMin = 6;
+
+export const CreateAdminUserBody = zod.object({
+  name: zod.string(),
+  email: zod.string().email(),
+  password: zod.string().min(createAdminUserBodyPasswordMin),
+  role: zod.enum(["admin", "user"]).optional(),
+});
+
+export const CreateAdminUserResponse = zod.object({
+  success: zod.boolean(),
+});
+
+/**
+ * @summary Delete a user (admin only)
+ */
+export const DeleteAdminUserParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const DeleteAdminUserResponse = zod.object({
+  success: zod.boolean(),
+});
+
+/**
+ * @summary Update a user's role (admin only)
+ */
+export const UpdateAdminUserRoleParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateAdminUserRoleBody = zod.object({
+  role: zod.enum(["admin", "user"]),
+});
+
+export const UpdateAdminUserRoleResponse = zod.object({
   success: zod.boolean(),
 });

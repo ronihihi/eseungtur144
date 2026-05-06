@@ -18,6 +18,8 @@ tags:
     description: Recipient management
   - name: signing
     description: Public signing flow
+  - name: admin
+    description: Admin user management
 paths:
   /healthz:
     get:
@@ -447,6 +449,117 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /auth/azure-enabled:
+    get:
+      operationId: getAzureEnabled
+      tags: [auth]
+      summary: Check if Azure SSO is configured
+      responses:
+        "200":
+          description: Azure SSO availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AzureEnabledResponse"
+
+  /admin/users:
+    get:
+      operationId: listAdminUsers
+      tags: [admin]
+      summary: List all users (admin only)
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserListResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createAdminUser
+      tags: [admin]
+      summary: Create a user (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "200":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/users/{id}:
+    delete:
+      operationId: deleteAdminUser
+      tags: [admin]
+      summary: Delete a user (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/users/{id}/role:
+    patch:
+      operationId: updateAdminUserRole
+      tags: [admin]
+      summary: Update a user's role (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoleRequest"
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -512,11 +625,15 @@ components:
           type: string
         hasSavedSignature:
           type: boolean
+        role:
+          type: string
+          enum: [admin, user]
       required:
         - id
         - name
         - email
         - hasSavedSignature
+        - role
 
     AuthResponse:
       type: object
@@ -835,3 +952,74 @@ components:
       required:
         - fullName
         - signatureData
+
+    AzureEnabledResponse:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+      required:
+        - enabled
+
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, user]
+        provider:
+          type: string
+          enum: [local, azure]
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - email
+        - role
+        - provider
+        - createdAt
+
+    AdminUserListResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUser"
+      required:
+        - users
+
+    CreateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        role:
+          type: string
+          enum: [admin, user]
+      required:
+        - name
+        - email
+        - password
+
+    UpdateRoleRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [admin, user]
+      required:
+        - role

@@ -1,6 +1,6 @@
 import { useLogout, useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
-import { LogOut, FileSignature, LayoutDashboard, Plus, PenLine } from "lucide-react";
+import { LogOut, FileSignature, LayoutDashboard, Plus, PenLine, Users } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -28,6 +28,8 @@ export function Layout({ children }: LayoutProps) {
     ? me.user.name.split(" ").map(n => n[0]).join("").toUpperCase().substring(0, 2)
     : "U";
 
+  const isAdmin = me?.user?.role === "admin";
+
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background">
       <header className="sticky top-0 z-30 w-full border-b bg-card">
@@ -38,8 +40,8 @@ export function Layout({ children }: LayoutProps) {
           </Link>
 
           <nav className="hidden md:flex items-center gap-6">
-            <Link 
-              href="/" 
+            <Link
+              href="/"
               className={`flex items-center gap-2 text-sm font-medium transition-colors ${
                 location === "/" ? "text-primary" : "text-muted-foreground hover:text-primary"
               }`}
@@ -47,7 +49,7 @@ export function Layout({ children }: LayoutProps) {
               <LayoutDashboard className="h-4 w-4" />
               Dashboard
             </Link>
-            <Link 
+            <Link
               href="/documents/upload"
               className={`flex items-center gap-2 text-sm font-medium transition-colors ${
                 location === "/documents/upload" ? "text-primary" : "text-muted-foreground hover:text-primary"
@@ -56,6 +58,17 @@ export function Layout({ children }: LayoutProps) {
               <Plus className="h-4 w-4" />
               New Document
             </Link>
+            {isAdmin && (
+              <Link
+                href="/admin/users"
+                className={`flex items-center gap-2 text-sm font-medium transition-colors ${
+                  location === "/admin/users" ? "text-primary" : "text-muted-foreground hover:text-primary"
+                }`}
+              >
+                <Users className="h-4 w-4" />
+                Users
+              </Link>
+            )}
           </nav>
 
           <div className="flex items-center gap-4">
