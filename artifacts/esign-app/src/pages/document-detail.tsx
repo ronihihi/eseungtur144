@@ -155,7 +155,11 @@ export function DocumentDetailPage() {
       width: 0.28,
       height: 0.065,
     };
-    setLocalFields((prev) => [...prev, newField]);
+    // One field per recipient — replace any existing field for this person
+    setLocalFields((prev) => [
+      ...prev.filter((f) => f.recipientId !== selectedRecipientId),
+      newField,
+    ]);
     setFieldsDirty(true);
   };
 
@@ -378,11 +382,11 @@ export function DocumentDetailPage() {
                 <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg text-sm">
                   <MousePointerClick className="h-4 w-4 text-primary shrink-0" />
                   <span className="text-muted-foreground">
-                    Click anywhere on the PDF to place a{" "}
+                    Click anywhere on the PDF to place{" "}
                     <strong style={{ color: getRecipientColor(selectedRecipientId).text }}>
                       {recipients.find((r) => r.id === selectedRecipientId)?.teamName}
-                    </strong>{" "}
-                    signature field. Click an existing field to remove it.
+                    </strong>
+                    's signature field. Each person gets one field — clicking moves it.
                   </span>
                 </div>
               )}

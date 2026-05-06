@@ -2,10 +2,37 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { v4 as uuidv4 } from "uuid";
 import { eq, and } from "drizzle-orm";
 import { db, documentsTable, recipientsTable, signatureFieldsTable } from "@workspace/db";
 import type { Request, Response } from "express";
+
+const execFileAsync = promisify(execFile);
+const SOFFICE = "/nix/store/074580fbnhxwxldi7g30hz5ll1h471za-libreoffice-7.6.7.2-wrapped/bin/soffice";
+
+async function convertDocxToPdf(inputPath: string, outputDir: string): Promise<string> {
+  const tmpProfile = `/tmp/lo-profile-${uuidv4()}`;
+  try {
+    await execFileAsync(
+      SOFFICE,
+      [
+        "--headless",
+        "--norestore",
+        `-env:UserInstallation=file://${tmpProfile}`,
+        "--convert-to", "pdf",
+        "--outdir", outputDir,
+        inputPath,
+      ],
+      { env: { ...process.env, HOME: "/tmp" }, timeout: 60_000 }
+    );
+    const baseName = path.basename(inputPath, path.extname(inputPath));
+    return path.join(outputDir, baseName + ".pdf");
+  } finally {
+    fs.rmSync(tmpProfile, { recursive: true, force: true });
+  }
+}
 
 const router: IRouter = Router();
 
@@ -71,12 +98,29 @@ router.post("/documents", requireAuth, upload.single("document"), async (req: Re
       return;
     }
     const { title, signing_order } = req.body as { title?: string; signing_order?: string };
+
+    let finalFilePath = req.file.path;
+    let finalFilename = req.file.originalname;
+
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    if (ext === ".docx" || ext === ".doc") {
+      try {
+        const pdfPath = await convertDocxToPdf(req.file.path, uploadsDir);
+        fs.unlinkSync(req.file.path);
+        finalFilePath = pdfPath;
+        finalFilename = path.basename(req.file.originalname, ext) + ".pdf";
+        req.log.info({ originalName: req.file.originalname, pdfPath }, "converted DOCX to PDF");
+      } catch (convErr) {
+        req.log.error({ convErr }, "DOCX to PDF conversion failed — keeping original");
+      }
+    }
+
     const newId = uuidv4();
     await db.insert(documentsTable).values({
       id: newId,
       title: title || req.file.originalname,
-      filename: req.file.originalname,
-      filepath: req.file.path,
+      filename: finalFilename,
+      filepath: finalFilePath,
       uploadedBy: req.session.userId!,
       uploaderName: req.session.userName!,
       signingOrder: signing_order === "sequential" ? "sequential" : "simultaneous",

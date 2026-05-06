@@ -22,7 +22,7 @@ A full-stack DocuSign-style e-signature app where teams upload PDFs, place signa
 - Auth: bcryptjs password hashing, express-session
 - Email: nodemailer (SMTP; skips silently if not configured)
 - File uploads: multer (stored in `uploads/` on disk)
-- PDF viewer: react-pdf (pdfjs-dist via CDN worker)
+- PDF viewer: react-pdf (pdfjs-dist worker served from `public/pdf.worker.min.mjs`)
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - Frontend: React + Vite + TanStack Query + wouter + shadcn/ui
 - API codegen: Orval (from OpenAPI spec)
@@ -46,14 +46,16 @@ A full-stack DocuSign-style e-signature app where teams upload PDFs, place signa
 - File uploads stored on local disk (`uploads/` folder); filepath stored in DB
 - SMTP email is optional — if not configured, email sends are skipped with a warning log
 - PDF served via authenticated `/api/documents/:id/file` (session cookie) or public `/api/sign/:token/file` (token in URL)
-- react-pdf uses CDN pdfjs worker: `pdfjs.GlobalWorkerOptions.workerSrc = \`https://cdnjs.cloudflare.com/.../pdf.worker.min.mjs\``
+- pdfjs worker copied to `artifacts/esign-app/public/pdf.worker.min.mjs` (cdnjs doesn't carry pdfjs v5); referenced as `/pdf.worker.min.mjs`
+- DOCX/DOC uploads auto-converted to PDF at upload time via LibreOffice (`soffice --headless --convert-to pdf`); original DOCX deleted after conversion; uses per-request temp profile dir to avoid lock conflicts
+- Each recipient is limited to exactly one signature field — placing a new one replaces any previous one for that person
 - Signature fields stored as 0–1 fractional coordinates (x, y, width, height) of page dimensions — renders with `position: absolute` percentage-based CSS
 - All `req.params.*` values must be cast `as string` when used in Drizzle `eq()` — Express types them as `string | string[]`
 
 ## Product
 
 - User registration and login (session-based)
-- Upload PDF or DOCX documents (up to 50MB)
+- Upload PDF or DOCX/DOC documents (up to 50MB); Word docs are auto-converted to PDF on the server via LibreOffice
 - **PDF viewer inline** — document detail page shows the live PDF with react-pdf
 - **Signature field placement** — admin clicks on PDF to place colored field boxes per recipient; fields saved to DB as fractional page coordinates
 - Add up to 7 team recipients with names and email addresses
@@ -67,7 +69,7 @@ A full-stack DocuSign-style e-signature app where teams upload PDFs, place signa
 
 ## User preferences
 
-- DocuSign-style field placement: click PDF to stamp signature box, click existing box to remove it
+- DocuSign-style field placement: click PDF to stamp signature box; each recipient gets exactly one field (clicking moves it)
 
 ## Gotchas
 
