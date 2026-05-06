@@ -38,13 +38,26 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 
 const RECIPIENT_COLORS = [
-  { bg: "rgba(59,130,246,0.15)", border: "#3b82f6", text: "#1d4ed8" },
-  { bg: "rgba(16,185,129,0.15)", border: "#10b981", text: "#065f46" },
-  { bg: "rgba(245,158,11,0.15)", border: "#f59e0b", text: "#78350f" },
-  { bg: "rgba(239,68,68,0.15)", border: "#ef4444", text: "#991b1b" },
-  { bg: "rgba(168,85,247,0.15)", border: "#a855f7", text: "#6b21a8" },
-  { bg: "rgba(20,184,166,0.15)", border: "#14b8a6", text: "#0f766e" },
-  { bg: "rgba(249,115,22,0.15)", border: "#f97316", text: "#9a3412" },
+  { bg: "rgba(59,130,246,0.15)",  border: "#3b82f6", text: "#1d4ed8" },
+  { bg: "rgba(16,185,129,0.15)",  border: "#10b981", text: "#065f46" },
+  { bg: "rgba(245,158,11,0.15)",  border: "#f59e0b", text: "#78350f" },
+  { bg: "rgba(239,68,68,0.15)",   border: "#ef4444", text: "#991b1b" },
+  { bg: "rgba(168,85,247,0.15)",  border: "#a855f7", text: "#6b21a8" },
+  { bg: "rgba(20,184,166,0.15)",  border: "#14b8a6", text: "#0f766e" },
+  { bg: "rgba(249,115,22,0.15)",  border: "#f97316", text: "#9a3412" },
+  { bg: "rgba(236,72,153,0.15)",  border: "#ec4899", text: "#9d174d" },
+  { bg: "rgba(99,102,241,0.15)",  border: "#6366f1", text: "#3730a3" },
+  { bg: "rgba(234,179,8,0.15)",   border: "#eab308", text: "#713f12" },
+  { bg: "rgba(20,184,166,0.15)",  border: "#0d9488", text: "#134e4a" },
+  { bg: "rgba(239,68,68,0.15)",   border: "#dc2626", text: "#7f1d1d" },
+  { bg: "rgba(37,99,235,0.15)",   border: "#2563eb", text: "#1e3a8a" },
+  { bg: "rgba(5,150,105,0.15)",   border: "#059669", text: "#064e3b" },
+  { bg: "rgba(217,119,6,0.15)",   border: "#d97706", text: "#78350f" },
+  { bg: "rgba(124,58,237,0.15)",  border: "#7c3aed", text: "#4c1d95" },
+  { bg: "rgba(6,182,212,0.15)",   border: "#06b6d4", text: "#164e63" },
+  { bg: "rgba(251,146,60,0.15)",  border: "#fb923c", text: "#7c2d12" },
+  { bg: "rgba(52,211,153,0.15)",  border: "#34d399", text: "#064e3b" },
+  { bg: "rgba(167,139,250,0.15)", border: "#a78bfa", text: "#4c1d95" },
 ];
 
 type FieldType = "signature" | "initials" | "date" | "text";
@@ -77,7 +90,7 @@ const recipientsSchema = z.object({
   recipients: z
     .array(z.object({ teamName: z.string().min(1, "Name is required"), email: z.string().email("Valid email required") }))
     .min(1, "At least one recipient is required")
-    .max(7, "Maximum 7 recipients allowed"),
+    .max(20, "Maximum 20 recipients allowed"),
 });
 
 const sendSchema = z.object({
@@ -606,7 +619,7 @@ export function DocumentDetailPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Recipients</CardTitle>
-                  <CardDescription className="text-xs">Up to 7 people who need to sign.</CardDescription>
+                  <CardDescription className="text-xs">Up to 20 people who need to sign.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Form {...form}>

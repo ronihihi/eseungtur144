@@ -189,7 +189,7 @@ export interface RecipientInput {
 }
 
 export interface SetRecipientsRequest {
-  /** @maxItems 7 */
+  /** @maxItems 20 */
   recipients: RecipientInput[];
 }
 

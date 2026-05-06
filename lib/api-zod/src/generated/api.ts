@@ -207,7 +207,7 @@ export const SetRecipientsParams = zod.object({
   id: zod.coerce.string(),
 });
 
-export const setRecipientsBodyRecipientsMax = 7;
+export const setRecipientsBodyRecipientsMax = 20;
 
 export const SetRecipientsBody = zod.object({
   recipients: zod

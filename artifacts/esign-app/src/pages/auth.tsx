@@ -36,7 +36,7 @@ function MicrosoftIcon() {
 
 const FEATURES = [
   { icon: FileSignature, text: "Collect legally binding e-signatures" },
-  { icon: Users, text: "Invite up to 7 recipients per document" },
+  { icon: Users, text: "Invite up to 20 recipients per document" },
   { icon: Zap, text: "Sequential or simultaneous signing flows" },
   { icon: ShieldCheck, text: "Full audit trail with timestamps & IPs" },
 ];
