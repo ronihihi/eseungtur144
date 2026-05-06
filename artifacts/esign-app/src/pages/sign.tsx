@@ -3,7 +3,7 @@ import { useParams } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FileSignature, CheckCircle2, AlertCircle, Stamp, FileText } from "lucide-react";
+import { FileSignature, CheckCircle2, AlertCircle, Stamp, FileText, Download } from "lucide-react";
 
 import {
   useGetSigningInfo,
@@ -35,6 +35,7 @@ export function SignPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [success, setSuccess] = useState(false);
+  const [submittedSig, setSubmittedSig] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState(1);
 
@@ -61,6 +62,7 @@ export function SignPage() {
       { token, data: values },
       {
         onSuccess: () => {
+          setSubmittedSig(values.signatureData);
           setSuccess(true);
           queryClient.invalidateQueries({ queryKey: getGetSigningInfoQueryKey(token) });
         },
@@ -82,6 +84,9 @@ export function SignPage() {
   const recipientFields = data?.fields ?? [];
   const isPdf = data?.documentFilename?.toLowerCase().endsWith(".pdf") ?? true;
 
+  // Signature image to display when completed — prefer just-submitted, fall back to stored
+  const completedSig = submittedSig || (data?.recipient as { signatureData?: string })?.signatureData || "";
+
   const renderSigningOverlay = () => (
     <>
       {recipientFields
@@ -95,20 +100,43 @@ export function SignPage() {
               top: `${f.y * 100}%`,
               width: `${f.width * 100}%`,
               height: `${f.height * 100}%`,
-              background: success || data?.alreadySigned ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.2)",
-              border: `2px dashed ${success || data?.alreadySigned ? "#22c55e" : "#f59e0b"}`,
+              background: "rgba(245,158,11,0.2)",
+              border: "2px dashed #f59e0b",
             }}
           >
-            {(success || data?.alreadySigned) && signatureData ? (
+            <span className="text-[10px] font-semibold text-amber-700 select-none">
+              ✎ Sign here
+            </span>
+          </div>
+        ))}
+    </>
+  );
+
+  const renderCompletedOverlay = () => (
+    <>
+      {recipientFields
+        .filter((f) => f.page === currentPage)
+        .map((f, idx) => (
+          <div
+            key={idx}
+            className="absolute pointer-events-none flex items-center justify-center rounded"
+            style={{
+              left: `${f.x * 100}%`,
+              top: `${f.y * 100}%`,
+              width: `${f.width * 100}%`,
+              height: `${f.height * 100}%`,
+              background: "rgba(34,197,94,0.08)",
+              border: "2px solid #22c55e",
+            }}
+          >
+            {completedSig ? (
               <img
-                src={signatureData}
+                src={completedSig}
                 alt="Signature"
                 className="max-h-full max-w-full object-contain p-1"
               />
             ) : (
-              <span className="text-[10px] font-semibold text-amber-700 select-none">
-                ✎ Sign here
-              </span>
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
             )}
           </div>
         ))}
@@ -140,7 +168,7 @@ export function SignPage() {
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Invalid or Expired Link</AlertTitle>
           <AlertDescription>
-            {(error as any)?.error || "This signing link is invalid or has already expired."}
+            {(error as { error?: string })?.error || "This signing link is invalid or has already expired."}
           </AlertDescription>
         </Alert>
       </div>
@@ -149,21 +177,72 @@ export function SignPage() {
 
   if (data.alreadySigned || success) {
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center bg-muted/30 p-4">
-        <Card className="w-full max-w-lg text-center">
-          <CardContent className="pt-12 pb-12 flex flex-col items-center">
-            <div className="h-16 w-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
-              <CheckCircle2 className="h-8 w-8" />
+      <div className="min-h-[100dvh] flex flex-col bg-muted/30">
+        <header className="bg-card border-b py-4 sticky top-0 z-10">
+          <div className="container mx-auto px-4 flex items-center justify-between">
+            <div className="flex items-center gap-2 font-semibold text-primary">
+              <FileSignature className="h-5 w-5" />
+              <span>WorkflowSign</span>
             </div>
-            <h2 className="text-2xl font-bold tracking-tight mb-2">All done!</h2>
-            <p className="text-muted-foreground">
-              Your signature has been securely recorded for
-              <br />
-              <strong>"{data.documentTitle}"</strong>
-            </p>
-            <p className="text-sm text-muted-foreground mt-6">You can close this window.</p>
-          </CardContent>
-        </Card>
+            <a
+              href={`/api/sign/${token}/file`}
+              download={data.documentFilename || "document.pdf"}
+            >
+              <Button variant="outline" size="sm">
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                Download
+              </Button>
+            </a>
+          </div>
+        </header>
+
+        <main className="flex-1 container mx-auto px-4 py-6 max-w-4xl space-y-4">
+          <Alert className="border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900/40">
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+            <AlertTitle className="text-green-800 dark:text-green-400">Document signed successfully</AlertTitle>
+            <AlertDescription className="text-green-700 dark:text-green-500">
+              Your signature has been securely recorded for <strong>"{data.documentTitle}"</strong>.
+              The document is shown below with your signature applied.
+            </AlertDescription>
+          </Alert>
+
+          {isPdf ? (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                Your signature is shown at the highlighted location below
+              </p>
+              <PdfViewer
+                fileUrl={`/api/sign/${token}/file`}
+                currentPage={currentPage}
+                numPages={numPages}
+                onLoadSuccess={setNumPages}
+                onPageChange={setCurrentPage}
+                renderOverlay={recipientFields.length > 0 ? renderCompletedOverlay : undefined}
+              />
+            </div>
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+                <div className="h-16 w-16 rounded-2xl bg-green-100 flex items-center justify-center">
+                  <CheckCircle2 className="h-8 w-8 text-green-600" />
+                </div>
+                <div className="space-y-1">
+                  <p className="font-semibold">{data.documentFilename}</p>
+                  <p className="text-sm text-muted-foreground">Your signature has been recorded.</p>
+                </div>
+                <a
+                  href={`/api/sign/${token}/file`}
+                  download={data.documentFilename || "document.pdf"}
+                  className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  <Download className="h-4 w-4" />
+                  Download Document
+                </a>
+              </CardContent>
+            </Card>
+          )}
+        </main>
       </div>
     );
   }
@@ -216,7 +295,7 @@ export function SignPage() {
                     download={data.documentFilename}
                     className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
                   >
-                    <FileText className="h-4 w-4" />
+                    <Download className="h-4 w-4" />
                     Download to review
                   </a>
                   <p className="text-xs text-muted-foreground max-w-xs">

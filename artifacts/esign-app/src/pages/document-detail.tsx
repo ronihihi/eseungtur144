@@ -6,7 +6,7 @@ import { z } from "zod";
 import { format } from "date-fns";
 import {
   ArrowLeft, Send, Plus, Trash2, Mail, CheckCircle2,
-  Clock, BellRing, Copy, Check, MousePointerClick, Save, FileText,
+  Clock, BellRing, Copy, Check, MousePointerClick, Save, FileText, Download,
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
@@ -328,6 +328,14 @@ export function DocumentDetailPage() {
           </div>
           <div className="flex items-center gap-3">
             <StatusBadge status={doc.status} />
+            {isPdf && (
+              <a href={`/api/documents/${id}/file`} download={doc.filename}>
+                <Button variant="outline" size="sm">
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Download
+                </Button>
+              </a>
+            )}
             {isDraft && (
               <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
                 <DialogTrigger asChild>
