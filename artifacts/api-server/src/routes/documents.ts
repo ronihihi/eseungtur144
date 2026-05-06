@@ -340,6 +340,12 @@ router.delete("/documents/:id", requireAuth, async (req: Request, res: Response)
       return;
     }
 
+    const doc = docs[0];
+    if (doc.status === "sent" || doc.status === "completed") {
+      res.status(409).json({ error: "Documents that have been sent for signing or are completed cannot be deleted." });
+      return;
+    }
+
     await db.delete(signatureFieldsTable).where(eq(signatureFieldsTable.documentId, id));
     await db.delete(recipientsTable).where(eq(recipientsTable.documentId, id));
     await db.delete(documentsTable).where(eq(documentsTable.id, id));
