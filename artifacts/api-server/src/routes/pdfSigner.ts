@@ -21,8 +21,11 @@ function fmtDate(date: Date): string {
   }).format(date);
 }
 
-export async function buildSignedPdf(filepath: string, entries: FieldEntry[]): Promise<Uint8Array> {
-  const pdfBytes = readFileSync(filepath);
+export async function buildSignedPdf(
+  source: string | Buffer,
+  entries: FieldEntry[]
+): Promise<Uint8Array> {
+  const pdfBytes = Buffer.isBuffer(source) ? source : readFileSync(source);
   const pdfDoc = await PDFDocument.load(pdfBytes);
   const pages = pdfDoc.getPages();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);

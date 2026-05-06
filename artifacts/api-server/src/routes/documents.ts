@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import { fileURLToPath } from "url";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -9,6 +10,7 @@ import { eq, and } from "drizzle-orm";
 import { db, documentsTable, recipientsTable, signatureFieldsTable } from "@workspace/db";
 import type { Request, Response } from "express";
 import { buildSignedPdf } from "./pdfSigner.js";
+import { uploadToGcs, downloadFromGcs, streamFromGcs, isGcsPath } from "../lib/gcsStorage.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -37,7 +39,7 @@ async function findSoffice(): Promise<string> {
 
 async function convertDocxToPdf(inputPath: string, outputDir: string): Promise<string> {
   const soffice = await findSoffice();
-  const tmpProfile = `/tmp/lo-profile-${uuidv4()}`;
+  const tmpProfile = path.join(os.tmpdir(), `lo-profile-${uuidv4()}`);
   try {
     await execFileAsync(
       soffice,
@@ -60,9 +62,9 @@ async function convertDocxToPdf(inputPath: string, outputDir: string): Promise<s
 
 const router: IRouter = Router();
 
+// Keep a local uploads dir for backward-compat with old local-path documents
 const uploadsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
 
 function requireAuth(req: Request, res: Response, next: () => void) {
   if (!req.session.userId) {
@@ -71,6 +73,18 @@ function requireAuth(req: Request, res: Response, next: () => void) {
     return;
   }
   next();
+}
+
+async function getFileBuffer(filepath: string): Promise<Buffer> {
+  if (isGcsPath(filepath)) {
+    return downloadFromGcs(filepath);
+  }
+  return fs.promises.readFile(filepath);
+}
+
+async function fileExists(filepath: string): Promise<boolean> {
+  if (isGcsPath(filepath)) return true;
+  return fs.existsSync(filepath);
 }
 
 router.get("/documents", requireAuth, async (req: Request, res: Response) => {
@@ -126,35 +140,41 @@ router.post("/documents", requireAuth, async (req: Request, res: Response) => {
       return;
     }
 
-    const savedName = uuidv4() + ext;
-    const savedPath = path.join(uploadsDir, savedName);
-    fs.writeFileSync(savedPath, buffer);
-
-    let finalFilePath = savedPath;
+    let pdfBuffer: Buffer;
     let finalFilename = fileName;
 
     if (ext === ".docx" || ext === ".doc") {
+      // Write to temp dir, convert, read back, delete temp files
+      const tmpDir = os.tmpdir();
+      const tmpInput = path.join(tmpDir, `upload-${uuidv4()}${ext}`);
+      fs.writeFileSync(tmpInput, buffer);
       try {
-        const pdfPath = await convertDocxToPdf(savedPath, uploadsDir);
-        fs.unlinkSync(savedPath);
-        finalFilePath = pdfPath;
+        const pdfPath = await convertDocxToPdf(tmpInput, tmpDir);
+        pdfBuffer = fs.readFileSync(pdfPath);
+        fs.unlinkSync(pdfPath);
         finalFilename = path.basename(fileName, ext) + ".pdf";
-        req.log.info({ originalName: fileName, pdfPath }, "converted DOCX to PDF");
+        req.log.info({ originalName: fileName }, "converted DOCX to PDF");
       } catch (convErr) {
-        fs.unlinkSync(savedPath);
-        req.log.error({ convErr }, "DOCX to PDF conversion failed");
         const msg = convErr instanceof Error ? convErr.message : "Could not convert Word document to PDF.";
         res.status(500).json({ error: msg });
         return;
+      } finally {
+        fs.rmSync(tmpInput, { force: true });
       }
+    } else {
+      pdfBuffer = buffer;
     }
+
+    // Upload to GCS
+    const objectName = `documents/${uuidv4()}.pdf`;
+    const gcsPath = await uploadToGcs(pdfBuffer, objectName, "application/pdf");
 
     const newId = uuidv4();
     await db.insert(documentsTable).values({
       id: newId,
       title: title || fileName,
       filename: finalFilename,
-      filepath: finalFilePath,
+      filepath: gcsPath,
       uploadedBy: req.session.userId!,
       uploaderName: req.session.userName!,
       signingOrder: signing_order === "sequential" ? "sequential" : "simultaneous",
@@ -217,16 +237,20 @@ router.get("/documents/:id/file", requireAuth, async (req: Request, res: Respons
     }
 
     const doc = docs[0];
-    if (!fs.existsSync(doc.filepath)) {
-      res.status(404).json({ error: "File not found on disk" });
+    if (!(await fileExists(doc.filepath))) {
+      res.status(404).json({ error: "File not found" });
       return;
     }
 
-    const ext = path.extname(doc.filepath).toLowerCase();
-    const contentType = ext === ".pdf" ? "application/pdf" : "application/octet-stream";
-    res.set("Content-Type", contentType);
-    res.set("Cache-Control", "private, max-age=300");
-    res.sendFile(path.resolve(doc.filepath));
+    if (isGcsPath(doc.filepath)) {
+      await streamFromGcs(doc.filepath, res, "application/pdf");
+    } else {
+      const ext = path.extname(doc.filepath).toLowerCase();
+      const contentType = ext === ".pdf" ? "application/pdf" : "application/octet-stream";
+      res.set("Content-Type", contentType);
+      res.set("Cache-Control", "private, max-age=300");
+      res.sendFile(path.resolve(doc.filepath));
+    }
   } catch (err) {
     req.log.error({ err }, "serve document file error");
     res.status(500).json({ error: "Internal server error" });
@@ -312,16 +336,8 @@ router.get("/documents/:id/download", requireAuth, async (req: Request, res: Res
       .where(and(eq(documentsTable.id, id), eq(documentsTable.uploadedBy, req.session.userId!)))
       .limit(1);
     const doc = docs[0];
-    if (!doc || !fs.existsSync(doc.filepath)) {
+    if (!doc || !(await fileExists(doc.filepath))) {
       res.status(404).json({ error: "Document not found" });
-      return;
-    }
-
-    const ext = path.extname(doc.filepath).toLowerCase();
-    if (ext !== ".pdf") {
-      res.set("Content-Type", "application/octet-stream");
-      res.set("Content-Disposition", `attachment; filename="${doc.filename}"`);
-      res.sendFile(path.resolve(doc.filepath));
       return;
     }
 
@@ -352,7 +368,11 @@ router.get("/documents/:id/download", requireAuth, async (req: Request, res: Res
         }));
     });
 
-    const pdfBytes = await buildSignedPdf(doc.filepath, entries);
+    const source = isGcsPath(doc.filepath)
+      ? await getFileBuffer(doc.filepath)
+      : doc.filepath;
+
+    const pdfBytes = await buildSignedPdf(source, entries);
     const safeName = doc.filename.replace(/[^a-z0-9.\-_]/gi, "_");
     res.set("Content-Type", "application/pdf");
     res.set("Content-Disposition", `attachment; filename="${safeName}"`);

@@ -23,7 +23,7 @@ A full-stack DocuSign-style e-signature app where teams upload PDFs, place signa
 - DB: PostgreSQL + Drizzle ORM
 - Auth: bcryptjs password hashing, express-session; Azure AD OAuth2 (raw fetch, no extra lib)
 - Email: nodemailer (SMTP; skips silently if not configured)
-- File uploads: multer (stored in `uploads/` on disk)
+- File uploads: base64 JSON → server decodes → saves to GCS (Google Cloud Storage via Replit Object Storage)
 - PDF viewer: react-pdf (pdfjs-dist worker served from `public/pdf.worker.min.mjs`)
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - Frontend: React + Vite + TanStack Query + wouter + shadcn/ui
@@ -45,7 +45,7 @@ A full-stack DocuSign-style e-signature app where teams upload PDFs, place signa
 
 - Session-based auth (express-session + bcryptjs) instead of JWT — simpler for this use case
 - `orval.config.ts` uses `indexFiles: false` for the Zod output to avoid duplicate export conflicts
-- File uploads stored on local disk (`uploads/` folder); filepath stored in DB
+- File uploads stored in GCS (Replit Object Storage); `filepath` in DB holds a `gcs://bucket-id/object-name` URI; old local paths still served from disk for backward compat
 - SMTP email is optional — if not configured, email sends are skipped with a warning log
 - PDF served via authenticated `/api/documents/:id/file` (session cookie) or public `/api/sign/:token/file` (token in URL)
 - Signed PDF download via `/api/documents/:id/download` (auth) or `/api/sign/:token/download` (public) — uses pdf-lib to burn signature images + signer name + date directly into the PDF file at download time; falls back gracefully if no signatures collected yet

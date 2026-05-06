@@ -7,8 +7,21 @@ import { SubmitSignatureBody } from "@workspace/api-zod";
 import type { Request, Response } from "express";
 import { sendSigningEmail } from "./emailService.js";
 import { buildSignedPdf } from "./pdfSigner.js";
+import { downloadFromGcs, streamFromGcs, isGcsPath } from "../lib/gcsStorage.js";
 
 const router: IRouter = Router();
+
+async function fileExists(filepath: string): Promise<boolean> {
+  if (isGcsPath(filepath)) return true;
+  return fs.existsSync(filepath);
+}
+
+async function getFileBuffer(filepath: string): Promise<Buffer> {
+  if (isGcsPath(filepath)) {
+    return downloadFromGcs(filepath);
+  }
+  return fs.promises.readFile(filepath);
+}
 
 // Authenticated: documents the current user has been asked to sign
 router.get("/signing/my-requests", async (req: Request, res: Response) => {
@@ -64,7 +77,6 @@ router.get("/signing/my-requests", async (req: Request, res: Response) => {
         };
       })
       .sort((a, b) => {
-        // Pending first, then most recent
         const aIsPending = a.recipientStatus !== "signed";
         const bIsPending = b.recipientStatus !== "signed";
         if (aIsPending && !bIsPending) return -1;
@@ -246,16 +258,8 @@ router.get("/sign/:token/download", async (req: Request, res: Response) => {
     const docId = recs[0].documentId;
     const docs = await db.select().from(documentsTable).where(eq(documentsTable.id, docId)).limit(1);
     const doc = docs[0];
-    if (!doc || !fs.existsSync(doc.filepath)) {
+    if (!doc || !(await fileExists(doc.filepath))) {
       res.status(404).json({ error: "File not found" });
-      return;
-    }
-
-    const ext = path.extname(doc.filepath).toLowerCase();
-    if (ext !== ".pdf") {
-      res.set("Content-Type", "application/octet-stream");
-      res.set("Content-Disposition", `attachment; filename="${doc.filename}"`);
-      res.sendFile(path.resolve(doc.filepath));
       return;
     }
 
@@ -291,7 +295,11 @@ router.get("/sign/:token/download", async (req: Request, res: Response) => {
         }));
     });
 
-    const pdfBytes = await buildSignedPdf(doc.filepath, entries);
+    const source = isGcsPath(doc.filepath)
+      ? await getFileBuffer(doc.filepath)
+      : doc.filepath;
+
+    const pdfBytes = await buildSignedPdf(source, entries);
     const safeName = doc.filename.replace(/[^a-z0-9.\-_]/gi, "_");
     res.set("Content-Type", "application/pdf");
     res.set("Content-Disposition", `attachment; filename="${safeName}"`);
@@ -316,22 +324,27 @@ router.get("/sign/:token/file", async (req: Request, res: Response) => {
       return;
     }
 
-    const doc = await db
+    const docs = await db
       .select()
       .from(documentsTable)
       .where(eq(documentsTable.id, recs[0].documentId))
       .limit(1);
 
-    if (!doc[0] || !fs.existsSync(doc[0].filepath)) {
+    if (!docs[0] || !(await fileExists(docs[0].filepath))) {
       res.status(404).json({ error: "File not found" });
       return;
     }
 
-    const ext = path.extname(doc[0].filepath).toLowerCase();
-    const contentType = ext === ".pdf" ? "application/pdf" : "application/octet-stream";
-    res.set("Content-Type", contentType);
-    res.set("Cache-Control", "private, max-age=300");
-    res.sendFile(path.resolve(doc[0].filepath));
+    const doc = docs[0];
+    if (isGcsPath(doc.filepath)) {
+      await streamFromGcs(doc.filepath, res, "application/pdf");
+    } else {
+      const ext = path.extname(doc.filepath).toLowerCase();
+      const contentType = ext === ".pdf" ? "application/pdf" : "application/octet-stream";
+      res.set("Content-Type", contentType);
+      res.set("Cache-Control", "private, max-age=300");
+      res.sendFile(path.resolve(doc.filepath));
+    }
   } catch (err) {
     req.log.error({ err }, "serve sign file error");
     res.status(500).json({ error: "Internal server error" });
