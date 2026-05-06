@@ -85,6 +85,7 @@ router.post("/auth/logout", (req: Request, res: Response) => {
 });
 
 router.get("/auth/me", (req: Request, res: Response) => {
+  res.set("Cache-Control", "no-store");
   if (!req.session.userId) {
     res.json({ user: null });
     return;
