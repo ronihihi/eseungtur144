@@ -118,6 +118,7 @@ export function UploadPage() {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/documents");
         xhr.withCredentials = true;
+        xhr.timeout = 120_000;
 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
@@ -126,21 +127,36 @@ export function UploadPage() {
         };
 
         xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            setUploadProgress(100);
-            const data = JSON.parse(xhr.responseText);
-            queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
-            setTimeout(() => {
-              setLocation(`/documents/${data.documentId}`);
-            }, 300);
-            resolve();
-          } else {
-            const err = JSON.parse(xhr.responseText);
-            reject(new Error(err.error || "Upload failed"));
+          try {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              setUploadProgress(100);
+              const data = JSON.parse(xhr.responseText) as { documentId: string };
+              queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
+              setTimeout(() => {
+                setLocation(`/documents/${data.documentId}`);
+              }, 300);
+              resolve();
+            } else if (xhr.status === 401) {
+              reject(new Error("Session expired — please log in again."));
+            } else if (xhr.status === 413) {
+              reject(new Error("File is too large. Please upload a file under 50 MB."));
+            } else {
+              let msg = "Upload failed";
+              try {
+                const err = JSON.parse(xhr.responseText) as { error?: string };
+                if (err.error) msg = err.error;
+              } catch {
+                if (xhr.responseText) msg = `Server error (${xhr.status})`;
+              }
+              reject(new Error(msg));
+            }
+          } catch (parseErr) {
+            reject(new Error(`Unexpected server response (${xhr.status})`));
           }
         };
 
-        xhr.onerror = () => reject(new Error("Network error during upload"));
+        xhr.onerror = () => reject(new Error("Could not reach the server. Please check your connection and try again."));
+        xhr.ontimeout = () => reject(new Error("Upload timed out. The file may be too large or the server is busy."));
         xhr.send(formData);
       });
     } catch (error: unknown) {

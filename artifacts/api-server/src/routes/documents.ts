@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { v4 as uuidv4 } from "uuid";
@@ -37,7 +38,7 @@ async function convertDocxToPdf(inputPath: string, outputDir: string): Promise<s
 
 const router: IRouter = Router();
 
-const uploadsDir = path.join(process.cwd(), "uploads");
+const uploadsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 const storage = multer.diskStorage({
