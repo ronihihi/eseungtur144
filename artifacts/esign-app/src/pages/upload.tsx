@@ -117,14 +117,36 @@ export function UploadPage() {
     setUploadProgress(10);
 
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      let binary = "";
-      const chunk = 8192;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      const readFileAsBase64 = (f: File): Promise<string> =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const ab = reader.result as ArrayBuffer;
+            const bytes = new Uint8Array(ab);
+            let binary = "";
+            const chunk = 8192;
+            for (let i = 0; i < bytes.length; i += chunk) {
+              binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+            }
+            resolve(btoa(binary));
+          };
+          reader.onerror = () => reject(reader.error);
+          reader.readAsArrayBuffer(f);
+        });
+
+      let fileData: string;
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = "";
+        const chunk = 8192;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+        }
+        fileData = btoa(binary);
+      } catch {
+        fileData = await readFileAsBase64(file);
       }
-      const fileData = btoa(binary);
 
       setUploadProgress(40);
 
@@ -156,10 +178,14 @@ export function UploadPage() {
         setLocation(`/documents/${data.documentId}`);
       }, 300);
     } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "";
+      const isReadError = msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("could not be read") || msg.toLowerCase().includes("failed to read");
       toast({
         variant: "destructive",
         title: "Upload failed",
-        description: error instanceof Error ? error.message : "An unexpected error occurred.",
+        description: isReadError
+          ? "The file could not be read. If it is open in Microsoft Word or another application, please close it and try again."
+          : msg || "An unexpected error occurred.",
       });
       setUploadProgress(0);
     } finally {
