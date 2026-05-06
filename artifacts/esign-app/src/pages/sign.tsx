@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,6 +24,7 @@ import { PdfViewer } from "@/components/pdf-viewer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 const signatureSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
@@ -52,6 +53,9 @@ export function SignPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState(1);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [sigDialogOpen, setSigDialogOpen] = useState(false);
+  const [tempSig, setTempSig] = useState("");
+  const sigPadSectionRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading, isError, error } = useGetSigningInfo(token, {
     query: { enabled: !!token, queryKey: getGetSigningInfoQueryKey(token), retry: false },
@@ -138,6 +142,16 @@ export function SignPage() {
     }
   };
 
+  const applySignatureFromDialog = () => {
+    if (!tempSig) return;
+    form.setValue("signatureData", tempSig);
+    form.clearErrors("signatureData");
+    setSigDialogOpen(false);
+    setTempSig("");
+    // Scroll to submit button so user can complete
+    sigPadSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+
   const renderSigningOverlay = () => (
     <>
       {recipientFields
@@ -147,26 +161,42 @@ export function SignPage() {
           const cfg = FIELD_COLORS[ft];
           const fieldId = (f as { id?: string }).id;
           const currentVal = fieldId ? fieldValues[fieldId] : undefined;
+          const isSignField = ft === "signature" || ft === "initials";
+          const alreadySigned = isSignField && signatureData;
+
           return (
             <div
               key={idx}
-              className="absolute pointer-events-none flex items-center justify-center rounded"
+              className={`absolute flex items-center justify-center rounded transition-all ${
+                isSignField && !alreadySigned
+                  ? "pointer-events-auto cursor-pointer hover:brightness-95 active:scale-[0.98]"
+                  : "pointer-events-none"
+              }`}
               style={{
                 left: `${f.x * 100}%`,
                 top: `${f.y * 100}%`,
                 width: `${f.width * 100}%`,
                 height: `${f.height * 100}%`,
-                background: cfg.bg,
-                border: `2px dashed ${cfg.border}`,
+                background: alreadySigned ? "rgba(34,197,94,0.1)" : cfg.bg,
+                border: `2px ${alreadySigned ? "solid #22c55e" : "dashed " + cfg.border}`,
               }}
+              onClick={isSignField && !alreadySigned ? () => setSigDialogOpen(true) : undefined}
+              title={isSignField && !alreadySigned ? "Click to sign" : undefined}
             >
-              {ft === "date" && currentVal ? (
+              {alreadySigned ? (
+                <img src={signatureData} alt="Signature" className="max-h-full max-w-full object-contain p-0.5" />
+              ) : ft === "date" && currentVal ? (
                 <span className="text-[9px] font-semibold truncate px-1 select-none" style={{ color: cfg.textColor }}>
                   {currentVal}
                 </span>
               ) : ft === "text" && currentVal ? (
                 <span className="text-[9px] font-semibold truncate px-1 select-none" style={{ color: cfg.textColor }}>
                   {currentVal}
+                </span>
+              ) : isSignField ? (
+                <span className="text-[10px] font-bold select-none flex items-center gap-0.5 animate-pulse" style={{ color: cfg.textColor }}>
+                  <PenLine className="h-2.5 w-2.5 shrink-0" />
+                  {cfg.label}
                 </span>
               ) : (
                 <span className="text-[10px] font-semibold select-none" style={{ color: cfg.textColor }}>
@@ -496,6 +526,7 @@ export function SignPage() {
                     {hasSignatureFields && (
                       <>
                         <Separator />
+                        <div ref={sigPadSectionRef} />
                         <FormField
                           control={form.control}
                           name="signatureData"
@@ -574,6 +605,42 @@ export function SignPage() {
           </div>
         </div>
       </main>
+
+      {/* Click-to-sign dialog — opens when user clicks a signature field on the PDF */}
+      <Dialog open={sigDialogOpen} onOpenChange={(open) => { setSigDialogOpen(open); if (!open) setTempSig(""); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PenLine className="h-4 w-4 text-primary" />
+              Draw Your Signature
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            {tempSig && tempSig.startsWith("data:image") ? (
+              <div className="border rounded-lg bg-white p-3 flex flex-col items-center gap-3">
+                <img src={tempSig} alt="Signature preview" className="max-h-28 object-contain" />
+                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => setTempSig("")}>
+                  Clear & redraw
+                </Button>
+              </div>
+            ) : (
+              <SignaturePad
+                onSign={(sig) => setTempSig(sig)}
+                onClear={() => setTempSig("")}
+              />
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setSigDialogOpen(false); setTempSig(""); }}>
+              Cancel
+            </Button>
+            <Button onClick={applySignatureFromDialog} disabled={!tempSig} className="gap-1.5">
+              <CheckCircle2 className="h-4 w-4" />
+              Apply Signature
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
