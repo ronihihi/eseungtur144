@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, Link } from "wouter";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -127,6 +127,7 @@ export function DocumentDetailPage() {
   const [numPages, setNumPages] = useState(1);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [draggingFieldType, setDraggingFieldType] = useState<FieldType | null>(null);
+  const [activeFieldType, setActiveFieldType] = useState<FieldType | null>(null);
 
   const form = useForm<z.infer<typeof recipientsSchema>>({
     resolver: zodResolver(recipientsSchema),
@@ -177,6 +178,15 @@ export function DocumentDetailPage() {
     }
   }, [recipients]);
 
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Escape") setActiveFieldType(null);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
+
   const pdfUrl = useMemo(() => ({ url: `/api/documents/${id}/file`, withCredentials: true }), [id]);
 
   const getRecipientColor = (recipientId: string) => {
@@ -184,31 +194,44 @@ export function DocumentDetailPage() {
     return RECIPIENT_COLORS[idx >= 0 ? idx % RECIPIENT_COLORS.length : 0];
   };
 
+  const placeField = (fieldType: FieldType, rawX: number, rawY: number) => {
+    if (!isDraft || !selectedRecipientId) return;
+    const config = FIELD_TYPES.find((ft) => ft.type === fieldType);
+    if (!config) return;
+    const x = Math.max(0, Math.min(1 - config.defaultW, rawX - config.defaultW / 2));
+    const y = Math.max(0, Math.min(1 - config.defaultH, rawY - config.defaultH / 2));
+    setLocalFields((prev) => [
+      ...prev,
+      {
+        id: `temp-${Date.now()}-${Math.random()}`,
+        documentId: id,
+        recipientId: selectedRecipientId,
+        page: currentPage,
+        x, y,
+        width: config.defaultW,
+        height: config.defaultH,
+        fieldType,
+      },
+    ]);
+    setFieldsDirty(true);
+  };
+
   const handleFieldDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (!isDraft || !selectedRecipientId) return;
     const fieldType = (e.dataTransfer.getData("fieldType") || draggingFieldType) as FieldType | null;
     if (!fieldType) return;
-    const config = FIELD_TYPES.find((ft) => ft.type === fieldType);
-    if (!config) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const rawX = (e.clientX - rect.left) / rect.width;
     const rawY = (e.clientY - rect.top) / rect.height;
-    const x = Math.max(0, Math.min(1 - config.defaultW, rawX - config.defaultW / 2));
-    const y = Math.max(0, Math.min(1 - config.defaultH, rawY - config.defaultH / 2));
-    const newField: FieldItem = {
-      id: `temp-${Date.now()}-${Math.random()}`,
-      documentId: id,
-      recipientId: selectedRecipientId,
-      page: currentPage,
-      x, y,
-      width: config.defaultW,
-      height: config.defaultH,
-      fieldType,
-    };
-    setLocalFields((prev) => [...prev, newField]);
+    placeField(fieldType, rawX, rawY);
     setDraggingFieldType(null);
-    setFieldsDirty(true);
+  };
+
+  const handlePdfClick = (rawX: number, rawY: number) => {
+    if (!activeFieldType) return;
+    placeField(activeFieldType, rawX, rawY);
+    setActiveFieldType(null);
   };
 
   const removeField = (fieldId: string) => {
@@ -473,7 +496,25 @@ export function DocumentDetailPage() {
         <div className="space-y-3">
           {isPdf ? (
             <>
-              {isDraft && selectedRecipientId && draggingFieldType && (
+              {isDraft && selectedRecipientId && activeFieldType && (
+                <div className="flex items-center justify-between gap-2 p-3 bg-primary/10 border-2 border-primary/40 rounded-lg text-sm animate-pulse-slow">
+                  <span className="text-primary font-medium flex items-center gap-2">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-primary" />
+                    Click anywhere on the PDF to place a <strong>{FIELD_TYPES.find(f=>f.type===activeFieldType)?.label}</strong> field for{" "}
+                    <strong style={{ color: getRecipientColor(selectedRecipientId).text }}>
+                      {recipients.find((r) => r.id === selectedRecipientId)?.teamName}
+                    </strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveFieldType(null)}
+                    className="text-xs text-muted-foreground hover:text-foreground underline shrink-0"
+                  >
+                    Cancel (Esc)
+                  </button>
+                </div>
+              )}
+              {isDraft && selectedRecipientId && draggingFieldType && !activeFieldType && (
                 <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg text-sm">
                   <Grip className="h-4 w-4 text-primary shrink-0" />
                   <span className="text-muted-foreground">
@@ -487,7 +528,7 @@ export function DocumentDetailPage() {
               {isDraft && !selectedRecipientId && recipients.length === 0 && (
                 <div className="flex items-center gap-2 p-3 bg-muted rounded-lg text-sm text-muted-foreground">
                   <Grip className="h-4 w-4 shrink-0" />
-                  Add recipients first, then drag field types onto the PDF to place them.
+                  Add recipients first, then click or drag field types onto the PDF.
                 </div>
               )}
               <PdfViewer
@@ -499,6 +540,8 @@ export function DocumentDetailPage() {
                 renderOverlay={renderFieldOverlay}
                 onDrop={handleFieldDrop}
                 onDragOver={(e) => e.preventDefault()}
+                onCanvasClick={isDraft && selectedRecipientId && activeFieldType ? handlePdfClick : undefined}
+                clickable={!!(isDraft && selectedRecipientId && activeFieldType)}
               />
               {fieldsDirty && (
                 <Button onClick={handleSaveFields} disabled={saveFieldsMutation.isPending} className="w-full" variant="secondary">
@@ -580,30 +623,41 @@ export function DocumentDetailPage() {
                     {/* Field type palette */}
                     {selectedRecipientId ? (
                       <>
-                        <p className="text-xs font-medium text-muted-foreground">Drag onto PDF to add:</p>
+                        <p className="text-xs font-medium text-muted-foreground">Click a field type, then click the PDF to place it:</p>
                         <div className="grid grid-cols-2 gap-2">
                           {FIELD_TYPES.map((ft) => {
                             const Icon = ft.icon;
+                            const isActive = activeFieldType === ft.type;
                             return (
                               <div
                                 key={ft.type}
                                 draggable
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setActiveFieldType(isActive ? null : ft.type)}
+                                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveFieldType(isActive ? null : ft.type); }}}
                                 onDragStart={(e) => {
                                   setDraggingFieldType(ft.type);
+                                  setActiveFieldType(null);
                                   e.dataTransfer.setData("fieldType", ft.type);
                                   e.dataTransfer.effectAllowed = "copy";
                                 }}
                                 onDragEnd={() => setDraggingFieldType(null)}
-                                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 border-dashed border-border cursor-grab active:cursor-grabbing hover:border-primary/60 hover:bg-primary/5 transition-colors select-none"
+                                className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 cursor-pointer active:scale-95 transition-all select-none ${
+                                  isActive
+                                    ? "border-primary bg-primary/10 shadow-sm ring-2 ring-primary/30"
+                                    : "border-dashed border-border hover:border-primary/60 hover:bg-primary/5 cursor-grab active:cursor-grabbing"
+                                }`}
                               >
-                                <Icon className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-[11px] font-medium text-center leading-tight text-foreground">{ft.label}</span>
+                                <Icon className={`h-4 w-4 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                                <span className={`text-[11px] font-medium text-center leading-tight ${isActive ? "text-primary" : "text-foreground"}`}>{ft.label}</span>
+                                {isActive && <span className="text-[9px] text-primary font-semibold uppercase tracking-wide">Active</span>}
                               </div>
                             );
                           })}
                         </div>
                         <p className="text-[11px] text-muted-foreground text-center">
-                          Click a placed field on the PDF to remove it.
+                          Or drag a field onto the PDF. Click a placed field to remove it.
                         </p>
                       </>
                     ) : (
