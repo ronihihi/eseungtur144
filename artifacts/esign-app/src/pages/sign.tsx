@@ -209,8 +209,8 @@ export function SignPage() {
                 top: `${f.y * 100}%`,
                 width: `${f.width * 100}%`,
                 height: `${f.height * 100}%`,
-                background: (alreadySigned || isFilled) ? "rgba(34,197,94,0.1)" : cfg.bg,
-                border: `2px ${(alreadySigned || isFilled) ? "solid #22c55e" : "dashed " + cfg.border}`,
+                background: (alreadySigned || isFilled) ? "transparent" : cfg.bg,
+                border: (alreadySigned || isFilled) ? "none" : `2px dashed ${cfg.border}`,
               }}
               onClick={handleClick}
               title={
@@ -284,8 +284,8 @@ export function SignPage() {
                 top: `${f.y * 100}%`,
                 width: `${f.width * 100}%`,
                 height: `${f.height * 100}%`,
-                background: "rgba(34,197,94,0.08)",
-                border: "2px solid #22c55e",
+                background: "transparent",
+                border: "none",
               }}
             >
               {isSignField && sigSrc ? (
