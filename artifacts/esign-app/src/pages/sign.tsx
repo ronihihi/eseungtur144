@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useParams } from "wouter";
+import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -338,10 +338,10 @@ export function SignPage() {
       <div className="min-h-[100dvh] flex flex-col bg-muted/30">
         <header className="bg-card border-b py-4 sticky top-0 z-10">
           <div className="container mx-auto px-4 flex items-center justify-between">
-            <div className="flex items-center gap-2 font-semibold text-primary">
+            <Link href="/" className="flex items-center gap-2 font-semibold text-primary hover:opacity-80 transition-opacity">
               <FileSignature className="h-5 w-5" />
               <span>WorkflowSign</span>
-            </div>
+            </Link>
             {data.documentStatus === "completed" ? (
               <a href={`/api/sign/${token}/download`} download={data.documentFilename || "document.pdf"}>
                 <Button variant="outline" size="sm">
@@ -437,9 +437,11 @@ export function SignPage() {
   return (
     <div className="min-h-[100dvh] flex flex-col bg-muted/30">
       <header className="bg-card border-b py-4 sticky top-0 z-10">
-        <div className="container mx-auto px-4 flex items-center gap-2 font-semibold text-primary">
-          <FileSignature className="h-5 w-5" />
-          <span>WorkflowSign</span>
+        <div className="container mx-auto px-4 flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2 font-semibold text-primary hover:opacity-80 transition-opacity">
+            <FileSignature className="h-5 w-5" />
+            <span>WorkflowSign</span>
+          </Link>
         </div>
       </header>
 
