@@ -206,7 +206,7 @@ export function AuthPage() {
             )}
 
             {isLogin ? (
-              <Form {...loginForm}>
+              <Form {...loginForm} key="login">
                 <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
                   <FormField
                     control={loginForm.control}
@@ -240,7 +240,7 @@ export function AuthPage() {
                 </form>
               </Form>
             ) : (
-              <Form {...registerForm}>
+              <Form {...registerForm} key="register">
                 <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-4">
                   <FormField
                     control={registerForm.control}
