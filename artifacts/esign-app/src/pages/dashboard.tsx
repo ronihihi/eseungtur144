@@ -1,7 +1,7 @@
 import { useListDocuments, useGetMySigningRequests } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { format, formatDistanceToNow } from "date-fns";
-import { Plus, FileText, CheckCircle2, Clock, Send, FileSignature, Trash2, PenLine, Eye } from "lucide-react";
+import { Plus, FileText, CheckCircle2, Clock, Send, FileSignature, Trash2, PenLine, Eye, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -275,6 +275,15 @@ export function DashboardPage() {
                             View
                           </Button>
                         </Link>
+
+                        {(doc.status === "completed" || doc.status === "sent") && (
+                          <a href={`/api/documents/${doc.id}/download`} download={doc.filename}>
+                            <Button variant="outline" size="sm">
+                              <Download className="mr-1.5 h-3.5 w-3.5" />
+                              Download
+                            </Button>
+                          </a>
+                        )}
 
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
