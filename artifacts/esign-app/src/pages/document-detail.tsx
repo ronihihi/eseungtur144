@@ -6,7 +6,8 @@ import { z } from "zod";
 import { format } from "date-fns";
 import {
   ArrowLeft, Send, Plus, Trash2, Mail, CheckCircle2,
-  Clock, BellRing, Copy, Check, MousePointerClick, Save, FileText, Download,
+  Clock, BellRing, Copy, Check, Save, FileText, Download,
+  PenLine, Pen, CalendarDays, Type, Grip,
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +47,8 @@ const RECIPIENT_COLORS = [
   { bg: "rgba(249,115,22,0.15)", border: "#f97316", text: "#9a3412" },
 ];
 
+type FieldType = "signature" | "initials" | "date" | "text";
+
 interface FieldItem {
   id: string;
   documentId: string;
@@ -55,7 +58,19 @@ interface FieldItem {
   y: number;
   width: number;
   height: number;
+  fieldType: FieldType;
 }
+
+const FIELD_TYPES: { type: FieldType; label: string; icon: React.ElementType; defaultW: number; defaultH: number }[] = [
+  { type: "signature", label: "Signature", icon: PenLine, defaultW: 0.28, defaultH: 0.072 },
+  { type: "initials", label: "Initials", icon: Pen, defaultW: 0.12, defaultH: 0.052 },
+  { type: "date", label: "Date Signed", icon: CalendarDays, defaultW: 0.22, defaultH: 0.042 },
+  { type: "text", label: "Text", icon: Type, defaultW: 0.26, defaultH: 0.042 },
+];
+
+const FIELD_TYPE_LABEL: Record<FieldType, string> = {
+  signature: "Sign", initials: "Init", date: "Date", text: "Text",
+};
 
 const recipientsSchema = z.object({
   recipients: z
@@ -97,6 +112,7 @@ export function DocumentDetailPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState(1);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
+  const [draggingFieldType, setDraggingFieldType] = useState<FieldType | null>(null);
 
   const form = useForm<z.infer<typeof recipientsSchema>>({
     resolver: zodResolver(recipientsSchema),
@@ -127,7 +143,12 @@ export function DocumentDetailPage() {
 
   useEffect(() => {
     if (detailData?.fields) {
-      setLocalFields(detailData.fields as FieldItem[]);
+      setLocalFields(
+        (detailData.fields as FieldItem[]).map((f) => ({
+          ...f,
+          fieldType: (f.fieldType as FieldType) ?? "signature",
+        }))
+      );
       setFieldsDirty(false);
     }
   }, [detailData?.fields]);
@@ -143,23 +164,30 @@ export function DocumentDetailPage() {
     return RECIPIENT_COLORS[idx >= 0 ? idx % RECIPIENT_COLORS.length : 0];
   };
 
-  const handlePdfClick = (x: number, y: number) => {
+  const handleFieldDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
     if (!isDraft || !selectedRecipientId) return;
+    const fieldType = (e.dataTransfer.getData("fieldType") || draggingFieldType) as FieldType | null;
+    if (!fieldType) return;
+    const config = FIELD_TYPES.find((ft) => ft.type === fieldType);
+    if (!config) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const rawX = (e.clientX - rect.left) / rect.width;
+    const rawY = (e.clientY - rect.top) / rect.height;
+    const x = Math.max(0, Math.min(1 - config.defaultW, rawX - config.defaultW / 2));
+    const y = Math.max(0, Math.min(1 - config.defaultH, rawY - config.defaultH / 2));
     const newField: FieldItem = {
       id: `temp-${Date.now()}-${Math.random()}`,
       documentId: id,
       recipientId: selectedRecipientId,
       page: currentPage,
-      x,
-      y,
-      width: 0.28,
-      height: 0.065,
+      x, y,
+      width: config.defaultW,
+      height: config.defaultH,
+      fieldType,
     };
-    // One field per recipient — replace any existing field for this person
-    setLocalFields((prev) => [
-      ...prev.filter((f) => f.recipientId !== selectedRecipientId),
-      newField,
-    ]);
+    setLocalFields((prev) => [...prev, newField]);
+    setDraggingFieldType(null);
     setFieldsDirty(true);
   };
 
@@ -180,6 +208,7 @@ export function DocumentDetailPage() {
             y: f.y,
             width: f.width,
             height: f.height,
+            fieldType: f.fieldType,
           })),
         },
       },
@@ -247,10 +276,11 @@ export function DocumentDetailPage() {
         .map((f) => {
           const color = getRecipientColor(f.recipientId);
           const recipient = recipients.find((r) => r.id === f.recipientId);
+          const typeLabel = FIELD_TYPE_LABEL[f.fieldType] ?? "Sign";
           return (
             <div
               key={f.id}
-              className="absolute pointer-events-auto flex items-center justify-center rounded"
+              className="absolute pointer-events-auto flex items-center justify-center rounded group"
               style={{
                 left: `${f.x * 100}%`,
                 top: `${f.y * 100}%`,
@@ -260,19 +290,16 @@ export function DocumentDetailPage() {
                 border: `2px dashed ${color.border}`,
                 cursor: isDraft ? "pointer" : "default",
               }}
-              title={isDraft ? `Click to remove "${recipient?.teamName}" field` : recipient?.teamName}
+              title={isDraft ? `Click to remove (${typeLabel} for ${recipient?.teamName})` : recipient?.teamName}
               onClick={(e) => {
-                if (isDraft) {
-                  e.stopPropagation();
-                  removeField(f.id);
-                }
+                if (isDraft) { e.stopPropagation(); removeField(f.id); }
               }}
             >
               <span
                 className="text-[10px] font-semibold truncate px-1 leading-none select-none"
                 style={{ color: color.text }}
               >
-                ✎ {recipient?.teamName || "?"}
+                {typeLabel} · {recipient?.teamName || "?"}
               </span>
             </div>
           );
@@ -386,22 +413,21 @@ export function DocumentDetailPage() {
         <div className="space-y-3">
           {isPdf ? (
             <>
-              {isDraft && selectedRecipientId && (
+              {isDraft && selectedRecipientId && draggingFieldType && (
                 <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg text-sm">
-                  <MousePointerClick className="h-4 w-4 text-primary shrink-0" />
+                  <Grip className="h-4 w-4 text-primary shrink-0" />
                   <span className="text-muted-foreground">
-                    Click anywhere on the PDF to place{" "}
+                    Drop the field anywhere on the PDF for{" "}
                     <strong style={{ color: getRecipientColor(selectedRecipientId).text }}>
                       {recipients.find((r) => r.id === selectedRecipientId)?.teamName}
-                    </strong>
-                    's signature field. Each person gets one field — clicking moves it.
+                    </strong>.
                   </span>
                 </div>
               )}
               {isDraft && !selectedRecipientId && recipients.length === 0 && (
                 <div className="flex items-center gap-2 p-3 bg-muted rounded-lg text-sm text-muted-foreground">
-                  <MousePointerClick className="h-4 w-4 shrink-0" />
-                  Add recipients first, then click the PDF to place their signature fields.
+                  <Grip className="h-4 w-4 shrink-0" />
+                  Add recipients first, then drag field types onto the PDF to place them.
                 </div>
               )}
               <PdfViewer
@@ -410,9 +436,9 @@ export function DocumentDetailPage() {
                 numPages={numPages}
                 onLoadSuccess={setNumPages}
                 onPageChange={setCurrentPage}
-                onCanvasClick={handlePdfClick}
                 renderOverlay={renderFieldOverlay}
-                clickable={isDraft && !!selectedRecipientId}
+                onDrop={handleFieldDrop}
+                onDragOver={(e) => e.preventDefault()}
               />
               {fieldsDirty && (
                 <Button onClick={handleSaveFields} disabled={saveFieldsMutation.isPending} className="w-full" variant="secondary">
@@ -457,39 +483,74 @@ export function DocumentDetailPage() {
               {recipients.length > 0 && isPdf && (
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Place Signature Fields</CardTitle>
+                    <CardTitle className="text-base">Place Fields</CardTitle>
                     <CardDescription className="text-xs">
-                      Select a person, then click the PDF where they should sign.
+                      Select a recipient, then drag a field type onto the document.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-2">
-                    {recipients.map((r, idx) => {
-                      const color = RECIPIENT_COLORS[idx % RECIPIENT_COLORS.length];
-                      const fieldCount = localFields.filter((f) => f.recipientId === r.id).length;
-                      return (
-                        <button
-                          key={r.id}
-                          type="button"
-                          onClick={() => setSelectedRecipientId(r.id)}
-                          className={`w-full flex items-center justify-between p-3 rounded-lg border-2 text-left transition-colors ${
-                            selectedRecipientId === r.id
-                              ? "border-primary bg-primary/5"
-                              : "border-border hover:border-primary/40"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="h-3 w-3 rounded-full shrink-0"
-                              style={{ background: color.border }}
-                            />
-                            <span className="text-sm font-medium">{r.teamName}</span>
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {fieldCount} field{fieldCount !== 1 ? "s" : ""}
-                          </span>
-                        </button>
-                      );
-                    })}
+                  <CardContent className="space-y-4">
+                    {/* Recipient selector */}
+                    <div className="space-y-2">
+                      {recipients.map((r, idx) => {
+                        const color = RECIPIENT_COLORS[idx % RECIPIENT_COLORS.length];
+                        const fieldCount = localFields.filter((f) => f.recipientId === r.id).length;
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => setSelectedRecipientId(r.id)}
+                            className={`w-full flex items-center justify-between p-2.5 rounded-lg border-2 text-left transition-colors ${
+                              selectedRecipientId === r.id
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-primary/40"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: color.border }} />
+                              <span className="text-sm font-medium">{r.teamName}</span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {fieldCount} field{fieldCount !== 1 ? "s" : ""}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Field type palette */}
+                    {selectedRecipientId ? (
+                      <>
+                        <p className="text-xs font-medium text-muted-foreground">Drag onto PDF to add:</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {FIELD_TYPES.map((ft) => {
+                            const Icon = ft.icon;
+                            return (
+                              <div
+                                key={ft.type}
+                                draggable
+                                onDragStart={(e) => {
+                                  setDraggingFieldType(ft.type);
+                                  e.dataTransfer.setData("fieldType", ft.type);
+                                  e.dataTransfer.effectAllowed = "copy";
+                                }}
+                                onDragEnd={() => setDraggingFieldType(null)}
+                                className="flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 border-dashed border-border cursor-grab active:cursor-grabbing hover:border-primary/60 hover:bg-primary/5 transition-colors select-none"
+                              >
+                                <Icon className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-[11px] font-medium text-center leading-tight text-foreground">{ft.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground text-center">
+                          Click a placed field on the PDF to remove it.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground text-center py-1">
+                        Select a recipient above to add fields.
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               )}

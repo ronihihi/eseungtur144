@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FileSignature, CheckCircle2, AlertCircle, Stamp, FileText, Download } from "lucide-react";
+import { FileSignature, CheckCircle2, AlertCircle, Stamp, FileText, Download, PenLine, CalendarDays, Type } from "lucide-react";
 
 import {
   useGetSigningInfo,
@@ -27,8 +27,21 @@ import { Separator } from "@/components/ui/separator";
 
 const signatureSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
-  signatureData: z.string().min(1, "Signature is required"),
+  signatureData: z.string().optional(),
 });
+
+type FieldType = "signature" | "initials" | "date" | "text";
+
+const FIELD_COLORS: Record<FieldType, { bg: string; border: string; textColor: string; label: string }> = {
+  signature: { bg: "rgba(245,158,11,0.18)", border: "#f59e0b", textColor: "#92400e", label: "Sign here" },
+  initials: { bg: "rgba(139,92,246,0.15)", border: "#8b5cf6", textColor: "#5b21b6", label: "Initials" },
+  date: { bg: "rgba(59,130,246,0.15)", border: "#3b82f6", textColor: "#1e3a8a", label: "Date" },
+  text: { bg: "rgba(34,197,94,0.12)", border: "#22c55e", textColor: "#14532d", label: "Fill in" },
+};
+
+function todayISO() {
+  return new Date().toISOString().split("T")[0];
+}
 
 export function SignPage() {
   const { token } = useParams<{ token: string }>();
@@ -38,6 +51,7 @@ export function SignPage() {
   const [submittedSig, setSubmittedSig] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState(1);
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
 
   const { data, isLoading, isError, error } = useGetSigningInfo(token, {
     query: { enabled: !!token, queryKey: getGetSigningInfoQueryKey(token), retry: false },
@@ -57,12 +71,55 @@ export function SignPage() {
 
   const signatureData = form.watch("signatureData");
 
+  const recipientFields = data?.fields ?? [];
+  const isPdf = data?.documentFilename?.toLowerCase().endsWith(".pdf") ?? true;
+
+  const hasSignatureFields = recipientFields.some(
+    (f) => (f as { fieldType?: string }).fieldType === "signature" || (f as { fieldType?: string }).fieldType === "initials" || !(f as { fieldType?: string }).fieldType
+  );
+  const hasTextFields = recipientFields.filter((f) => (f as { fieldType?: string }).fieldType === "text");
+  const hasDateFields = recipientFields.filter((f) => (f as { fieldType?: string }).fieldType === "date");
+
+  // Pre-populate date fields with today's date
+  useEffect(() => {
+    if (hasDateFields.length > 0) {
+      const today = todayISO();
+      setFieldValues((prev) => {
+        const next = { ...prev };
+        for (const f of hasDateFields) {
+          if (!next[(f as { id: string }).id]) {
+            next[(f as { id: string }).id] = today;
+          }
+        }
+        return next;
+      });
+    }
+  }, [recipientFields.length]);
+
+  const completedSig = submittedSig || data?.recipient?.signatureData || "";
+
+  const isSubmitDisabled =
+    submitSignatureMutation.isPending ||
+    (hasSignatureFields && !signatureData) ||
+    !form.watch("fullName");
+
   const onSubmit = (values: z.infer<typeof signatureSchema>) => {
+    if (hasSignatureFields && !values.signatureData) {
+      form.setError("signatureData", { message: "Signature is required" });
+      return;
+    }
     submitSignatureMutation.mutate(
-      { token, data: values },
+      {
+        token,
+        data: {
+          fullName: values.fullName,
+          signatureData: values.signatureData ?? null,
+          fieldValues: Object.keys(fieldValues).length > 0 ? fieldValues : undefined,
+        },
+      },
       {
         onSuccess: () => {
-          setSubmittedSig(values.signatureData);
+          setSubmittedSig(values.signatureData ?? "");
           setSuccess(true);
           queryClient.invalidateQueries({ queryKey: getGetSigningInfoQueryKey(token) });
         },
@@ -81,34 +138,44 @@ export function SignPage() {
     }
   };
 
-  const recipientFields = data?.fields ?? [];
-  const isPdf = data?.documentFilename?.toLowerCase().endsWith(".pdf") ?? true;
-
-  // Signature image to display when completed — prefer just-submitted, fall back to stored in DB
-  const completedSig = submittedSig || data?.recipient?.signatureData || "";
-
   const renderSigningOverlay = () => (
     <>
       {recipientFields
         .filter((f) => f.page === currentPage)
-        .map((f, idx) => (
-          <div
-            key={idx}
-            className="absolute pointer-events-none flex items-center justify-center rounded"
-            style={{
-              left: `${f.x * 100}%`,
-              top: `${f.y * 100}%`,
-              width: `${f.width * 100}%`,
-              height: `${f.height * 100}%`,
-              background: "rgba(245,158,11,0.2)",
-              border: "2px dashed #f59e0b",
-            }}
-          >
-            <span className="text-[10px] font-semibold text-amber-700 select-none">
-              ✎ Sign here
-            </span>
-          </div>
-        ))}
+        .map((f, idx) => {
+          const ft = ((f as { fieldType?: string }).fieldType || "signature") as FieldType;
+          const cfg = FIELD_COLORS[ft];
+          const fieldId = (f as { id?: string }).id;
+          const currentVal = fieldId ? fieldValues[fieldId] : undefined;
+          return (
+            <div
+              key={idx}
+              className="absolute pointer-events-none flex items-center justify-center rounded"
+              style={{
+                left: `${f.x * 100}%`,
+                top: `${f.y * 100}%`,
+                width: `${f.width * 100}%`,
+                height: `${f.height * 100}%`,
+                background: cfg.bg,
+                border: `2px dashed ${cfg.border}`,
+              }}
+            >
+              {ft === "date" && currentVal ? (
+                <span className="text-[9px] font-semibold truncate px-1 select-none" style={{ color: cfg.textColor }}>
+                  {currentVal}
+                </span>
+              ) : ft === "text" && currentVal ? (
+                <span className="text-[9px] font-semibold truncate px-1 select-none" style={{ color: cfg.textColor }}>
+                  {currentVal}
+                </span>
+              ) : (
+                <span className="text-[10px] font-semibold select-none" style={{ color: cfg.textColor }}>
+                  {cfg.label}
+                </span>
+              )}
+            </div>
+          );
+        })}
     </>
   );
 
@@ -116,30 +183,33 @@ export function SignPage() {
     <>
       {recipientFields
         .filter((f) => f.page === currentPage)
-        .map((f, idx) => (
-          <div
-            key={idx}
-            className="absolute pointer-events-none flex items-center justify-center rounded"
-            style={{
-              left: `${f.x * 100}%`,
-              top: `${f.y * 100}%`,
-              width: `${f.width * 100}%`,
-              height: `${f.height * 100}%`,
-              background: "rgba(34,197,94,0.08)",
-              border: "2px solid #22c55e",
-            }}
-          >
-            {completedSig ? (
-              <img
-                src={completedSig}
-                alt="Signature"
-                className="max-h-full max-w-full object-contain p-1"
-              />
-            ) : (
-              <CheckCircle2 className="h-4 w-4 text-green-500" />
-            )}
-          </div>
-        ))}
+        .map((f, idx) => {
+          const ft = ((f as { fieldType?: string }).fieldType || "signature") as FieldType;
+          const fieldId = (f as { id?: string }).id;
+          const storedVal = fieldId ? fieldValues[fieldId] : undefined;
+          return (
+            <div
+              key={idx}
+              className="absolute pointer-events-none flex items-center justify-center rounded"
+              style={{
+                left: `${f.x * 100}%`,
+                top: `${f.y * 100}%`,
+                width: `${f.width * 100}%`,
+                height: `${f.height * 100}%`,
+                background: "rgba(34,197,94,0.08)",
+                border: "2px solid #22c55e",
+              }}
+            >
+              {(ft === "signature" || ft === "initials") && completedSig ? (
+                <img src={completedSig} alt="Signature" className="max-h-full max-w-full object-contain p-1" />
+              ) : storedVal ? (
+                <span className="text-[10px] font-semibold truncate px-1 select-none text-green-800">{storedVal}</span>
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              )}
+            </div>
+          );
+        })}
     </>
   );
 
@@ -184,10 +254,7 @@ export function SignPage() {
               <FileSignature className="h-5 w-5" />
               <span>WorkflowSign</span>
             </div>
-            <a
-              href={`/api/sign/${token}/download`}
-              download={data.documentFilename || "document.pdf"}
-            >
+            <a href={`/api/sign/${token}/download`} download={data.documentFilename || "document.pdf"}>
               <Button variant="outline" size="sm">
                 <Download className="mr-1.5 h-3.5 w-3.5" />
                 Download
@@ -211,7 +278,7 @@ export function SignPage() {
               {recipientFields.length > 0 && (
                 <p className="text-sm text-muted-foreground flex items-center gap-1.5">
                   <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                  Your signature is shown at the highlighted location below
+                  Your fields are shown at the highlighted locations below
                 </p>
               )}
               <PdfViewer
@@ -222,7 +289,6 @@ export function SignPage() {
                 onPageChange={setCurrentPage}
                 renderOverlay={recipientFields.length > 0 ? renderCompletedOverlay : undefined}
               />
-              {/* When no field was placed, show signature beneath the PDF */}
               {recipientFields.length === 0 && completedSig && (
                 <div className="rounded-xl border border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900/40 p-4 space-y-2">
                   <p className="text-xs font-semibold text-green-700 dark:text-green-400 flex items-center gap-1.5">
@@ -283,10 +349,26 @@ export function SignPage() {
             {isPdf ? (
               <>
                 {recipientFields.length > 0 && (
-                  <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                    <span className="inline-block h-3 w-3 rounded-sm bg-amber-400/60 border border-amber-500" />
-                    Your signature field is highlighted on the document
-                  </p>
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    {hasSignatureFields && (
+                      <span className="flex items-center gap-1.5">
+                        <span className="inline-block h-2.5 w-4 rounded-sm" style={{ background: FIELD_COLORS.signature.bg, border: `1.5px dashed ${FIELD_COLORS.signature.border}` }} />
+                        Signature field
+                      </span>
+                    )}
+                    {hasDateFields.length > 0 && (
+                      <span className="flex items-center gap-1.5">
+                        <span className="inline-block h-2.5 w-4 rounded-sm" style={{ background: FIELD_COLORS.date.bg, border: `1.5px dashed ${FIELD_COLORS.date.border}` }} />
+                        Date field
+                      </span>
+                    )}
+                    {hasTextFields.length > 0 && (
+                      <span className="flex items-center gap-1.5">
+                        <span className="inline-block h-2.5 w-4 rounded-sm" style={{ background: FIELD_COLORS.text.bg, border: `1.5px dashed ${FIELD_COLORS.text.border}` }} />
+                        Text field
+                      </span>
+                    )}
+                  </div>
                 )}
                 <PdfViewer
                   fileUrl={`/api/sign/${token}/file`}
@@ -345,6 +427,7 @@ export function SignPage() {
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)}>
                   <CardContent className="space-y-5 pt-5">
+                    {/* Full name */}
                     <FormField
                       control={form.control}
                       name="fullName"
@@ -359,55 +442,112 @@ export function SignPage() {
                       )}
                     />
 
-                    <Separator />
+                    {/* Text fields */}
+                    {hasTextFields.length > 0 && (
+                      <>
+                        <Separator />
+                        <div className="space-y-3">
+                          {hasTextFields.map((f) => {
+                            const fId = (f as { id: string }).id;
+                            return (
+                              <div key={fId} className="space-y-1.5">
+                                <label className="text-sm font-medium flex items-center gap-1.5">
+                                  <Type className="h-3.5 w-3.5 text-muted-foreground" />
+                                  Text field
+                                </label>
+                                <Input
+                                  placeholder="Enter text…"
+                                  value={fieldValues[fId] ?? ""}
+                                  onChange={(e) => setFieldValues((prev) => ({ ...prev, [fId]: e.target.value }))}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
 
-                    <FormField
-                      control={form.control}
-                      name="signatureData"
-                      render={({ field }) => (
-                        <FormItem>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <FormLabel>Your signature</FormLabel>
-                            {meData?.user?.hasSavedSignature && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs gap-1.5"
-                                onClick={useSavedSignature}
-                              >
-                                <Stamp className="h-3 w-3" />
-                                Use saved
-                              </Button>
-                            )}
-                          </div>
-                          <FormControl>
-                            <div className={`rounded-lg transition-colors ${form.formState.errors.signatureData ? "ring-2 ring-destructive ring-offset-2" : ""}`}>
-                              {signatureData && signatureData.startsWith("data:image") ? (
-                                <div className="border rounded-lg bg-white p-2 flex flex-col items-center gap-2">
-                                  <img src={signatureData} alt="Signature preview" className="max-h-24 object-contain" />
+                    {/* Date fields */}
+                    {hasDateFields.length > 0 && (
+                      <>
+                        <Separator />
+                        <div className="space-y-3">
+                          {hasDateFields.map((f) => {
+                            const fId = (f as { id: string }).id;
+                            return (
+                              <div key={fId} className="space-y-1.5">
+                                <label className="text-sm font-medium flex items-center gap-1.5">
+                                  <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                                  Date signed
+                                </label>
+                                <Input
+                                  type="date"
+                                  value={fieldValues[fId] ?? todayISO()}
+                                  onChange={(e) => setFieldValues((prev) => ({ ...prev, [fId]: e.target.value }))}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Signature / Initials pad */}
+                    {hasSignatureFields && (
+                      <>
+                        <Separator />
+                        <FormField
+                          control={form.control}
+                          name="signatureData"
+                          render={({ field }) => (
+                            <FormItem>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <FormLabel className="flex items-center gap-1.5">
+                                  <PenLine className="h-3.5 w-3.5 text-muted-foreground" />
+                                  Your signature
+                                </FormLabel>
+                                {meData?.user?.hasSavedSignature && (
                                   <Button
                                     type="button"
-                                    variant="ghost"
+                                    variant="outline"
                                     size="sm"
-                                    className="text-xs text-muted-foreground"
-                                    onClick={() => field.onChange("")}
+                                    className="h-7 text-xs gap-1.5"
+                                    onClick={useSavedSignature}
                                   >
-                                    Clear & redraw
+                                    <Stamp className="h-3 w-3" />
+                                    Use saved
                                   </Button>
+                                )}
+                              </div>
+                              <FormControl>
+                                <div className={`rounded-lg transition-colors ${form.formState.errors.signatureData ? "ring-2 ring-destructive ring-offset-2" : ""}`}>
+                                  {signatureData && signatureData.startsWith("data:image") ? (
+                                    <div className="border rounded-lg bg-white p-2 flex flex-col items-center gap-2">
+                                      <img src={signatureData} alt="Signature preview" className="max-h-24 object-contain" />
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-xs text-muted-foreground"
+                                        onClick={() => field.onChange("")}
+                                      >
+                                        Clear & redraw
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <SignaturePad
+                                      onSign={(sig) => { field.onChange(sig); form.clearErrors("signatureData"); }}
+                                      onClear={() => field.onChange("")}
+                                    />
+                                  )}
                                 </div>
-                              ) : (
-                                <SignaturePad
-                                  onSign={(sig) => { field.onChange(sig); form.clearErrors("signatureData"); }}
-                                  onClear={() => field.onChange("")}
-                                />
-                              )}
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </>
+                    )}
 
                     <div className="bg-muted p-3 rounded-lg text-xs text-muted-foreground flex gap-2.5">
                       <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
@@ -423,7 +563,7 @@ export function SignPage() {
                       type="submit"
                       size="lg"
                       className="w-full"
-                      disabled={submitSignatureMutation.isPending || !signatureData}
+                      disabled={isSubmitDisabled}
                     >
                       {submitSignatureMutation.isPending ? "Submitting…" : "Submit Signature"}
                     </Button>

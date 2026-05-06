@@ -733,6 +733,12 @@ components:
           type: number
         height:
           type: number
+        fieldType:
+          type: string
+          enum: [signature, initials, date, text]
+        fieldValue:
+          type: string
+          nullable: true
       required:
         - id
         - documentId
@@ -742,6 +748,7 @@ components:
         - y
         - width
         - height
+        - fieldType
 
     SignatureFieldInput:
       type: object
@@ -758,6 +765,9 @@ components:
           type: number
         height:
           type: number
+        fieldType:
+          type: string
+          enum: [signature, initials, date, text]
       required:
         - recipientId
         - page
@@ -765,6 +775,7 @@ components:
         - y
         - width
         - height
+        - fieldType
 
     SignatureFieldsResponse:
       type: object
@@ -992,10 +1003,15 @@ components:
           type: string
         signatureData:
           type: string
-          description: Base64-encoded signature image
+          nullable: true
+          description: Base64-encoded signature image (required when signing signature/initials fields)
+        fieldValues:
+          type: object
+          description: Map of fieldId to value for text and date fields
+          additionalProperties:
+            type: string
       required:
         - fullName
-        - signatureData
 
     AzureEnabledResponse:
       type: object

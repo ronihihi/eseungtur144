@@ -61,6 +61,16 @@ export interface SaveSignatureRequest {
   signatureData: string;
 }
 
+export type SignatureFieldFieldType =
+  (typeof SignatureFieldFieldType)[keyof typeof SignatureFieldFieldType];
+
+export const SignatureFieldFieldType = {
+  signature: "signature",
+  initials: "initials",
+  date: "date",
+  text: "text",
+} as const;
+
 export interface SignatureField {
   id: string;
   documentId: string;
@@ -70,7 +80,19 @@ export interface SignatureField {
   y: number;
   width: number;
   height: number;
+  fieldType: SignatureFieldFieldType;
+  fieldValue?: string | null;
 }
+
+export type SignatureFieldInputFieldType =
+  (typeof SignatureFieldInputFieldType)[keyof typeof SignatureFieldInputFieldType];
+
+export const SignatureFieldInputFieldType = {
+  signature: "signature",
+  initials: "initials",
+  date: "date",
+  text: "text",
+} as const;
 
 export interface SignatureFieldInput {
   recipientId: string;
@@ -79,6 +101,7 @@ export interface SignatureFieldInput {
   y: number;
   width: number;
   height: number;
+  fieldType: SignatureFieldInputFieldType;
 }
 
 export interface SignatureFieldsResponse {
@@ -193,10 +216,17 @@ export interface SigningInfoResponse {
   fields: SignatureField[];
 }
 
+/**
+ * Map of fieldId to value for text and date fields
+ */
+export type SubmitSignatureRequestFieldValues = { [key: string]: string };
+
 export interface SubmitSignatureRequest {
   fullName: string;
-  /** Base64-encoded signature image */
-  signatureData: string;
+  /** Base64-encoded signature image (required when signing signature/initials fields) */
+  signatureData?: string | null;
+  /** Map of fieldId to value for text and date fields */
+  fieldValues?: SubmitSignatureRequestFieldValues;
 }
 
 export interface AzureEnabledResponse {

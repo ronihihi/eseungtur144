@@ -183,6 +183,8 @@ export const GetDocumentResponse = zod.object({
       y: zod.number(),
       width: zod.number(),
       height: zod.number(),
+      fieldType: zod.enum(["signature", "initials", "date", "text"]),
+      fieldValue: zod.string().nullish(),
     }),
   ),
 });
@@ -240,6 +242,8 @@ export const GetDocumentFieldsResponse = zod.object({
       y: zod.number(),
       width: zod.number(),
       height: zod.number(),
+      fieldType: zod.enum(["signature", "initials", "date", "text"]),
+      fieldValue: zod.string().nullish(),
     }),
   ),
 });
@@ -260,6 +264,7 @@ export const SaveDocumentFieldsBody = zod.object({
       y: zod.number(),
       width: zod.number(),
       height: zod.number(),
+      fieldType: zod.enum(["signature", "initials", "date", "text"]),
     }),
   ),
 });
@@ -364,6 +369,8 @@ export const GetSigningInfoResponse = zod.object({
       y: zod.number(),
       width: zod.number(),
       height: zod.number(),
+      fieldType: zod.enum(["signature", "initials", "date", "text"]),
+      fieldValue: zod.string().nullish(),
     }),
   ),
 });
@@ -377,7 +384,16 @@ export const SubmitSignatureParams = zod.object({
 
 export const SubmitSignatureBody = zod.object({
   fullName: zod.string(),
-  signatureData: zod.string().describe("Base64-encoded signature image"),
+  signatureData: zod
+    .string()
+    .nullish()
+    .describe(
+      "Base64-encoded signature image (required when signing signature\/initials fields)",
+    ),
+  fieldValues: zod
+    .record(zod.string(), zod.string())
+    .optional()
+    .describe("Map of fieldId to value for text and date fields"),
 });
 
 export const SubmitSignatureResponse = zod.object({

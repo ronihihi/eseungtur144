@@ -237,7 +237,7 @@ router.put("/documents/:id/fields", requireAuth, async (req: Request, res: Respo
     }
 
     const { fields } = req.body as {
-      fields: Array<{ recipientId: string; page: number; x: number; y: number; width: number; height: number }>;
+      fields: Array<{ recipientId: string; page: number; x: number; y: number; width: number; height: number; fieldType?: string }>;
     };
 
     if (!Array.isArray(fields)) {
@@ -258,6 +258,7 @@ router.put("/documents/:id/fields", requireAuth, async (req: Request, res: Respo
           y: f.y,
           width: f.width,
           height: f.height,
+          fieldType: f.fieldType ?? "signature",
         }))
       );
     }
@@ -288,25 +289,31 @@ router.get("/documents/:id/download", requireAuth, async (req: Request, res: Res
     }
 
     const recipients = await db.select().from(recipientsTable).where(eq(recipientsTable.documentId, id));
-    const signedRecipients = recipients.filter((r) => r.status === "signed" && r.signatureData);
+    const signedRecipients = recipients.filter((r) => r.status === "signed");
 
-    const entries = await Promise.all(
-      signedRecipients.map(async (r) => {
-        const fields = await db
-          .select()
-          .from(signatureFieldsTable)
-          .where(eq(signatureFieldsTable.recipientId, r.id))
-          .limit(1);
-        return {
-          signatureData: r.signatureData!,
-          signerName: r.signerName || r.teamName,
-          signedAt: r.signedAt ? new Date(r.signedAt) : new Date(),
-          field: fields[0]
-            ? { page: fields[0].page, x: fields[0].x, y: fields[0].y, width: fields[0].width, height: fields[0].height }
-            : null,
-        };
-      })
-    );
+    const allFields = await db
+      .select()
+      .from(signatureFieldsTable)
+      .where(eq(signatureFieldsTable.documentId, id));
+
+    const entries = signedRecipients.flatMap((r) => {
+      const recipientFields = allFields.filter((f) => f.recipientId === r.id);
+      const signedAt = r.signedAt ? new Date(r.signedAt) : new Date();
+      const signerName = r.signerName || r.teamName;
+      return recipientFields
+        .filter((f) => f.fieldValue)
+        .map((f) => ({
+          fieldType: (f.fieldType || "signature") as "signature" | "initials" | "date" | "text",
+          fieldValue: f.fieldValue!,
+          signerName,
+          signedAt,
+          page: f.page,
+          x: f.x,
+          y: f.y,
+          width: f.width,
+          height: f.height,
+        }));
+    });
 
     const pdfBytes = await buildSignedPdf(doc.filepath, entries);
     const safeName = doc.filename.replace(/[^a-z0-9.\-_]/gi, "_");

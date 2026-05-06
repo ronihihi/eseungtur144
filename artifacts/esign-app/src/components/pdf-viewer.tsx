@@ -16,6 +16,8 @@ interface PdfViewerProps {
   renderOverlay?: () => React.ReactNode;
   clickable?: boolean;
   className?: string;
+  onDrop?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver?: (e: React.DragEvent<HTMLDivElement>) => void;
 }
 
 export function PdfViewer({
@@ -28,6 +30,8 @@ export function PdfViewer({
   renderOverlay,
   clickable = false,
   className = "",
+  onDrop,
+  onDragOver,
 }: PdfViewerProps) {
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -51,6 +55,8 @@ export function PdfViewer({
           clickable ? "cursor-crosshair" : ""
         }`}
         onClick={handleClick}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
       >
         <Document
           file={fileUrl}

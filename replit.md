@@ -51,7 +51,8 @@ A full-stack DocuSign-style e-signature app where teams upload PDFs, place signa
 - Signed PDF download via `/api/documents/:id/download` (auth) or `/api/sign/:token/download` (public) — uses pdf-lib to burn signature images + signer name + date directly into the PDF file at download time; falls back gracefully if no signatures collected yet
 - pdfjs worker copied to `artifacts/esign-app/public/pdf.worker.min.mjs` (cdnjs doesn't carry pdfjs v5); referenced as `/pdf.worker.min.mjs`
 - DOCX/DOC uploads auto-converted to PDF at upload time via LibreOffice (`soffice --headless --convert-to pdf`); original DOCX deleted after conversion; uses per-request temp profile dir to avoid lock conflicts
-- Each recipient is limited to exactly one signature field — placing a new one replaces any previous one for that person
+- Multiple fields per recipient — unlimited; drag field type from palette and drop onto PDF to place; click placed field to remove
+- Four field types: `signature` (drawn pad → PNG image in PDF), `initials` (drawn pad), `date` (date input, pre-filled today), `text` (free text input)
 - Signature fields stored as 0–1 fractional coordinates (x, y, width, height) of page dimensions — renders with `position: absolute` percentage-based CSS
 - All `req.params.*` values must be cast `as string` when used in Drizzle `eq()` — Express types them as `string | string[]`
 
@@ -60,7 +61,7 @@ A full-stack DocuSign-style e-signature app where teams upload PDFs, place signa
 - User registration and login (session-based)
 - Upload PDF or DOCX/DOC documents (up to 50MB); Word docs are auto-converted to PDF on the server via LibreOffice
 - **PDF viewer inline** — document detail page shows the live PDF with react-pdf
-- **Signature field placement** — admin clicks on PDF to place colored field boxes per recipient; fields saved to DB as fractional page coordinates
+- **Signature field placement** — drag field types (Signature, Initials, Date, Text) from palette onto PDF per recipient; multiple fields per person allowed; fields saved to DB as fractional page coordinates
 - Add up to 7 team recipients with names and email addresses
 - Choose sequential (one-by-one) or simultaneous signing
 - Email sent to recipients with unique per-recipient signing link

@@ -131,7 +131,7 @@ router.post("/sign/:token", async (req: Request, res: Response) => {
       return;
     }
 
-    const { fullName, signatureData } = parsed.data;
+    const { fullName, signatureData, fieldValues } = parsed.data;
 
     const recs = await db
       .select()
@@ -160,9 +160,30 @@ router.post("/sign/:token", async (req: Request, res: Response) => {
         signedAt: new Date(),
         signerName: fullName,
         ipAddress: ip,
-        signatureData,
+        signatureData: signatureData ?? null,
       })
       .where(eq(recipientsTable.token, token));
+
+    // Persist field values for each placed field
+    const recipientFields = await db
+      .select()
+      .from(signatureFieldsTable)
+      .where(eq(signatureFieldsTable.recipientId, r.id));
+
+    for (const field of recipientFields) {
+      let value: string | null = null;
+      if (field.fieldType === "signature" || field.fieldType === "initials") {
+        value = signatureData ?? null;
+      } else if (fieldValues && fieldValues[field.id] !== undefined) {
+        value = fieldValues[field.id];
+      }
+      if (value !== null) {
+        await db
+          .update(signatureFieldsTable)
+          .set({ fieldValue: value })
+          .where(eq(signatureFieldsTable.id, field.id));
+      }
+    }
 
     const docs = await db.select().from(documentsTable).where(eq(documentsTable.id, r.documentId)).limit(1);
     const doc = docs[0];
@@ -228,25 +249,31 @@ router.get("/sign/:token/download", async (req: Request, res: Response) => {
     }
 
     const allRecipients = await db.select().from(recipientsTable).where(eq(recipientsTable.documentId, docId));
-    const signedRecipients = allRecipients.filter((r) => r.status === "signed" && r.signatureData);
+    const signedRecipients = allRecipients.filter((r) => r.status === "signed");
 
-    const entries = await Promise.all(
-      signedRecipients.map(async (r) => {
-        const fields = await db
-          .select()
-          .from(signatureFieldsTable)
-          .where(eq(signatureFieldsTable.recipientId, r.id))
-          .limit(1);
-        return {
-          signatureData: r.signatureData!,
-          signerName: r.signerName || r.teamName,
-          signedAt: r.signedAt ? new Date(r.signedAt) : new Date(),
-          field: fields[0]
-            ? { page: fields[0].page, x: fields[0].x, y: fields[0].y, width: fields[0].width, height: fields[0].height }
-            : null,
-        };
-      })
-    );
+    const allFields = await db
+      .select()
+      .from(signatureFieldsTable)
+      .where(eq(signatureFieldsTable.documentId, docId));
+
+    const entries = signedRecipients.flatMap((r) => {
+      const recipientFields = allFields.filter((f) => f.recipientId === r.id);
+      const signedAt = r.signedAt ? new Date(r.signedAt) : new Date();
+      const signerName = r.signerName || r.teamName;
+      return recipientFields
+        .filter((f) => f.fieldValue)
+        .map((f) => ({
+          fieldType: (f.fieldType || "signature") as "signature" | "initials" | "date" | "text",
+          fieldValue: f.fieldValue!,
+          signerName,
+          signedAt,
+          page: f.page,
+          x: f.x,
+          y: f.y,
+          width: f.width,
+          height: f.height,
+        }));
+    });
 
     const pdfBytes = await buildSignedPdf(doc.filepath, entries);
     const safeName = doc.filename.replace(/[^a-z0-9.\-_]/gi, "_");

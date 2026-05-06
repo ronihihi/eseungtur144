@@ -9,6 +9,8 @@ export const signatureFieldsTable = pgTable("signature_fields", {
   y: real("y").notNull().default(0.85),
   width: real("width").notNull().default(0.3),
   height: real("height").notNull().default(0.07),
+  fieldType: text("field_type").notNull().default("signature"),
+  fieldValue: text("field_value"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
