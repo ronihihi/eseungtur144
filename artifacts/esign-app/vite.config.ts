@@ -35,6 +35,24 @@ export default defineConfig({
           next();
         });
       },
+      // After the production build, generate sign.html from index.html with noindex injected.
+      // This avoids a multi-page rollupOptions.input which triggers EISDIR on Vite 7 in production.
+      closeBundle() {
+        if (process.env.NODE_ENV !== "production") return;
+        const outDir = path.resolve(import.meta.dirname, "dist/public");
+        const indexPath = path.join(outDir, "index.html");
+        const signPath = path.join(outDir, "sign.html");
+        try {
+          const indexHtml = fs.readFileSync(indexPath, "utf-8");
+          const signHtml = indexHtml.replace(
+            "<head>",
+            '<head>\n    <meta name="robots" content="noindex, nofollow, noarchive" />',
+          );
+          fs.writeFileSync(signPath, signHtml);
+        } catch {
+          // dist may not exist when not in a build context
+        }
+      },
     },
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
@@ -62,10 +80,6 @@ export default defineConfig({
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
     rollupOptions: {
-      input: {
-        main: path.resolve(import.meta.dirname, "index.html"),
-        sign: path.resolve(import.meta.dirname, "sign.html"),
-      },
       output: {
         manualChunks(id) {
           if (id.includes("node_modules/react-pdf") || id.includes("node_modules/pdfjs-dist")) {

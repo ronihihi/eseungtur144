@@ -1,0 +1,1 @@
+- [Vite multi-page EISDIR fix](vite-multipage-eisdir.md) — removing rollupOptions.input and using a closeBundle plugin to generate sign.html avoids deployment EISDIR errors in Vite 7.
