@@ -41,93 +41,143 @@ function imageFileToDataUrl(file: File): Promise<string> {
 export function SignaturePad({ onSign, onClear }: SignaturePadProps) {
   const [mode, setMode] = useState<Mode>("draw");
 
-  /* ── Draw mode state ── */
+  /* ── Draw mode ── */
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
+  const lastPoint = useRef<{ x: number; y: number } | null>(null);
+  const dpr = useRef(1);
 
-  /* ── Upload mode state ── */
+  /* ── Upload mode ── */
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedDataUrl, setUploadedDataUrl] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
   const [uploadError, setUploadError] = useState("");
 
-  /* ── Canvas init ── */
-  useEffect(() => {
+  /* ── Canvas init: account for device pixel ratio so strokes land exactly under the cursor ── */
+  const initCanvas = useCallback(() => {
     if (mode !== "draw") return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const rect = canvas.parentElement?.getBoundingClientRect();
-    if (rect) {
-      canvas.width = rect.width;
-      canvas.height = 200;
-    }
+    const ratio = window.devicePixelRatio || 1;
+    dpr.current = ratio;
+    const cssW = canvas.offsetWidth || (canvas.parentElement?.offsetWidth ?? 480);
+    const cssH = 200;
+    // Set real pixel size
+    canvas.width = Math.round(cssW * ratio);
+    canvas.height = Math.round(cssH * ratio);
+    // Scale all drawing operations so 1 CSS px = 1 unit
+    ctx.scale(ratio, ratio);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "#1c325d";
   }, [mode]);
 
-  /* ── Clear helper ── */
-  const clearAll = useCallback(() => {
-    // draw
+  useEffect(() => {
+    initCanvas();
+  }, [initCanvas]);
+
+  /* ── Get canvas-local coordinates (CSS pixels, corrected for scroll/offset) ── */
+  const getPos = (
+    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
+  ): { x: number; y: number } => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    if ("touches" in e) {
+      const t = e.touches[0];
+      return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+    }
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const startDrawing = (
+    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
+  ) => {
+    e.preventDefault();
+    const pos = getPos(e);
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+    lastPoint.current = pos;
+    setIsDrawing(true);
+    setHasDrawn(true);
+  };
+
+  const draw = (
+    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
+  ) => {
+    e.preventDefault();
+    if (!isDrawing) return;
+    const pos = getPos(e);
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx || !lastPoint.current) return;
+
+    // Quadratic Bézier through the midpoint: this turns sharp corners into smooth curves
+    const mid = {
+      x: (lastPoint.current.x + pos.x) / 2,
+      y: (lastPoint.current.y + pos.y) / 2,
+    };
+    ctx.quadraticCurveTo(lastPoint.current.x, lastPoint.current.y, mid.x, mid.y);
+    ctx.stroke();
+    // Start the next segment from the midpoint so curves connect smoothly
+    ctx.beginPath();
+    ctx.moveTo(mid.x, mid.y);
+
+    lastPoint.current = pos;
+  };
+
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    // Draw a final dot if the user just clicked without moving
+    const ctx = canvasRef.current?.getContext("2d");
+    if (ctx && lastPoint.current) {
+      ctx.lineTo(lastPoint.current.x + 0.1, lastPoint.current.y + 0.1);
+      ctx.stroke();
+    }
+    lastPoint.current = null;
+    setIsDrawing(false);
+    if (hasDrawn && canvasRef.current) {
+      // Export at full resolution
+      onSign(canvasRef.current.toDataURL("image/png"));
+    }
+  };
+
+  /* ── Clear ── */
+  const clearCanvas = () => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
-    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (canvas && ctx) {
+      // Reset transform, clear, then re-apply DPR scale
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(dpr.current, dpr.current);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "#1c325d";
+    }
+    lastPoint.current = null;
     setHasDrawn(false);
-    // upload
+    onClear();
+  };
+
+  const clearAll = useCallback(() => {
+    clearCanvas();
     setUploadedDataUrl("");
     setUploadError("");
     if (fileInputRef.current) fileInputRef.current.value = "";
     onClear();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClear]);
 
   const switchMode = (m: Mode) => {
     clearAll();
     setMode(m);
-  };
-
-  /* ── Draw handlers ── */
-  const getCoords = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    if ("touches" in e) {
-      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
-    }
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    const { x, y } = getCoords(e);
-    const ctx = canvasRef.current?.getContext("2d");
-    if (ctx) { ctx.beginPath(); ctx.moveTo(x, y); setIsDrawing(true); setHasDrawn(true); }
-  };
-
-  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    if (!isDrawing) return;
-    const { x, y } = getCoords(e);
-    const ctx = canvasRef.current?.getContext("2d");
-    if (ctx) { ctx.lineTo(x, y); ctx.stroke(); }
-  };
-
-  const stopDrawing = () => {
-    setIsDrawing(false);
-    if (hasDrawn && canvasRef.current) {
-      onSign(canvasRef.current.toDataURL("image/png"));
-    }
-  };
-
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setHasDrawn(false);
-    onClear();
   };
 
   /* ── Upload handlers ── */
@@ -192,7 +242,10 @@ export function SignaturePad({ onSign, onClear }: SignaturePadProps) {
 
       {mode === "draw" ? (
         <>
-          <div className="border border-input rounded-md overflow-hidden bg-white touch-none">
+          <div
+            className="border border-input rounded-md overflow-hidden bg-white touch-none select-none"
+            style={{ lineHeight: 0 }}
+          >
             <canvas
               ref={canvasRef}
               onMouseDown={startDrawing}
@@ -202,11 +255,14 @@ export function SignaturePad({ onSign, onClear }: SignaturePadProps) {
               onTouchStart={startDrawing}
               onTouchMove={draw}
               onTouchEnd={stopDrawing}
-              className="w-full h-[200px] cursor-crosshair block"
+              onTouchCancel={stopDrawing}
+              style={{ width: "100%", height: "200px", display: "block", cursor: "crosshair" }}
             />
           </div>
           <div className="flex justify-between items-center">
-            <p className="text-xs text-muted-foreground">Draw your signature above</p>
+            <p className="text-xs text-muted-foreground">
+              {hasDrawn ? "Looking good — clear to start over" : "Draw your signature above"}
+            </p>
             <Button variant="outline" size="sm" type="button" onClick={clearCanvas} disabled={!hasDrawn}>
               Clear
             </Button>
