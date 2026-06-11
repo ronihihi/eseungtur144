@@ -76,10 +76,10 @@ interface FieldItem {
 }
 
 const FIELD_TYPES: { type: FieldType; label: string; icon: React.ElementType; defaultW: number; defaultH: number }[] = [
-  { type: "signature", label: "Signature", icon: PenLine, defaultW: 0.28, defaultH: 0.072 },
-  { type: "initials", label: "Initials", icon: Pen, defaultW: 0.12, defaultH: 0.052 },
-  { type: "date", label: "Date Signed", icon: CalendarDays, defaultW: 0.22, defaultH: 0.042 },
-  { type: "text", label: "Text", icon: Type, defaultW: 0.26, defaultH: 0.042 },
+  { type: "signature", label: "Signature", icon: PenLine, defaultW: 0.18, defaultH: 0.050 },
+  { type: "initials", label: "Initials", icon: Pen, defaultW: 0.08, defaultH: 0.038 },
+  { type: "date", label: "Date Signed", icon: CalendarDays, defaultW: 0.13, defaultH: 0.032 },
+  { type: "text", label: "Text", icon: Type, defaultW: 0.16, defaultH: 0.032 },
 ];
 
 const FIELD_TYPE_LABEL: Record<FieldType, string> = {
