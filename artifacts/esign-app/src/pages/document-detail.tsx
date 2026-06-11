@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -34,7 +34,20 @@ import {
   useGetDocumentStatus,
   getGetDocumentStatusQueryKey,
   useSaveDocumentFields,
+  useDeleteDocument,
+  getListDocumentsQueryKey,
 } from "@workspace/api-client-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 
 const RECIPIENT_COLORS = [
@@ -102,6 +115,8 @@ export function DocumentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
+  const deleteMutation = useDeleteDocument();
 
   const { data: detailData, isLoading } = useGetDocument(id, {
     query: { enabled: !!id, queryKey: getGetDocumentQueryKey(id) },
@@ -418,6 +433,47 @@ export function DocumentDetailPage() {
                   Download
                 </Button>
               </a>
+            )}
+            {isDraft && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1.5">
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Document</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete "{doc.title}"? This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => {
+                        deleteMutation.mutate(
+                          { id },
+                          {
+                            onSuccess: () => {
+                              queryClient.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
+                              toast({ title: "Document deleted" });
+                              navigate("/");
+                            },
+                            onError: (err: unknown) => {
+                              toast({ variant: "destructive", title: "Failed to delete", description: (err as { error?: string })?.error });
+                            },
+                          }
+                        );
+                      }}
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
             {isDraft && (
               <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>

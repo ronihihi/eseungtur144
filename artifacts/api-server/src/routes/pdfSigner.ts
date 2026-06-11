@@ -40,17 +40,19 @@ function toDrawCoords(
 ): { x: number; y: number; w: number; h: number } {
   switch (rotation) {
     case 90:
-      // Display: ph wide × pw tall (swapped).
-      // Forward map (display → un-rotated): x_p = fy*pw, y_p = fx*ph (then flip Y for pdf-lib)
+      // 90° CW: display top-left=(pw,ph), top-right=(pw,0), bottom-left=(0,ph), bottom-right=(0,0)
+      // x_mb = pw*(1-fy),  y_mb = ph*(1-fx)
+      // pdf-lib bottom-left corner of field box:
       return {
-        x: fy * pw,
-        y: fx * ph,
+        x: pw * (1 - fy - fh),
+        y: ph * (1 - fx - fw),
         w: fh * pw,
         h: fw * ph,
       };
 
     case 180:
-      // Display: pw wide × ph tall (same size, flipped both axes).
+      // 180°: display top-left=(pw,0), axes both flipped.
+      // x_mb = pw*(1-fx),  y_mb = ph*fy
       return {
         x: pw * (1 - fx - fw),
         y: ph * fy,
@@ -59,10 +61,11 @@ function toDrawCoords(
       };
 
     case 270:
-      // Display: ph wide × pw tall (swapped, opposite direction to 90).
+      // 270° CW (= 90° CCW): display top-left=(0,0), top-right=(0,ph), bottom-left=(pw,0)
+      // x_mb = pw*fy,  y_mb = ph*fx
       return {
-        x: pw * (1 - fy - fh),
-        y: ph * (1 - fx - fw),
+        x: pw * fy,
+        y: ph * fx,
         w: fh * pw,
         h: fw * ph,
       };
