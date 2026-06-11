@@ -1,0 +1,9 @@
+User-agent: *
+Disallow: /sign/
+Disallow: /documents/
+Disallow: /admin/
+
+Allow: /auth
+Allow: /
+
+Sitemap: https://workflowsign.replit.app/sitemap.xml

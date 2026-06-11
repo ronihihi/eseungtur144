@@ -93,6 +93,7 @@ router.get("/signing/my-requests", async (req: Request, res: Response) => {
 });
 
 router.get("/sign/:token", async (req: Request, res: Response) => {
+  res.set("X-Robots-Tag", "noindex, nofollow, noarchive");
   const token = req.params.token as string;
   try {
     const recs = await db
@@ -247,6 +248,7 @@ router.post("/sign/:token", async (req: Request, res: Response) => {
 });
 
 router.get("/sign/:token/download", async (req: Request, res: Response) => {
+  res.set("X-Robots-Tag", "noindex, nofollow, noarchive");
   const token = req.params.token as string;
   try {
     const recs = await db.select().from(recipientsTable).where(eq(recipientsTable.token, token)).limit(1);
@@ -310,6 +312,7 @@ router.get("/sign/:token/download", async (req: Request, res: Response) => {
 });
 
 router.get("/sign/:token/file", async (req: Request, res: Response) => {
+  res.set("X-Robots-Tag", "noindex, nofollow, noarchive");
   const token = req.params.token as string;
   try {
     const recs = await db

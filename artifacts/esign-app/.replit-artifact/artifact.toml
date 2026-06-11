@@ -23,6 +23,10 @@ publicDir = "artifacts/esign-app/dist/public"
 serve = "static"
 
 [[services.production.rewrites]]
+from = "/sign/*"
+to = "/sign.html"
+
+[[services.production.rewrites]]
 from = "/*"
 to = "/index.html"
 

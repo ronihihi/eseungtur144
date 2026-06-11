@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import fs from "fs";
 
 const rawPort = process.env.PORT;
 
@@ -32,6 +33,26 @@ export default defineConfig({
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
+    {
+      name: "sign-route-noindex",
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          const url = req.url ?? "";
+          if (url.startsWith("/sign/") || url === "/sign") {
+            const signHtml = path.resolve(import.meta.dirname, "sign.html");
+            fs.readFile(signHtml, "utf-8", (err, content) => {
+              if (err) return next();
+              server.transformIndexHtml(url, content).then((transformed) => {
+                res.setHeader("Content-Type", "text/html; charset=utf-8");
+                res.end(transformed);
+              }).catch(() => next());
+            });
+            return;
+          }
+          next();
+        });
+      },
+    },
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
@@ -57,6 +78,12 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: path.resolve(import.meta.dirname, "index.html"),
+        sign: path.resolve(import.meta.dirname, "sign.html"),
+      },
+    },
   },
   server: {
     port,
