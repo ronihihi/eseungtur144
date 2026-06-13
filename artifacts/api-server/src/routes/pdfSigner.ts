@@ -266,7 +266,7 @@ async function addAuditPage(
   sectionLabel("DOCUMENT INFORMATION");
   kv("Document Name:", truncate(doc.documentName, 52));
   kv("Document ID:", doc.documentId);
-  kv("Signing Status:", "\u2713  COMPLETED", successGreen, true);
+  kv("Signing Status:", "COMPLETED", successGreen, true);
   kv("Certificate ID:", certId, brandBlue, true);
   kv("Completed:", fmtDateTime(doc.completedAt));
   y -= 8;
