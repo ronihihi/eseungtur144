@@ -7,7 +7,7 @@ import { SubmitSignatureBody } from "@workspace/api-zod";
 import type { Request, Response } from "express";
 import { sendSigningEmail } from "./emailService.js";
 import { getAppBaseUrl } from "../lib/appUrl.js";
-import { buildSignedPdf } from "./pdfSigner.js";
+import { buildSignedPdf, SignerRecord, DocMeta } from "./pdfSigner.js";
 import { downloadFromGcs, streamFromGcs, isGcsPath } from "../lib/gcsStorage.js";
 
 const router: IRouter = Router();
@@ -296,11 +296,29 @@ router.get("/sign/:token/download", async (req: Request, res: Response) => {
         }));
     });
 
+    const signerRecords: SignerRecord[] = signedRecipients.map((r) => ({
+      name: r.signerName || r.teamName,
+      email: r.email,
+      signedAt: r.signedAt ? new Date(r.signedAt) : new Date(),
+      ipAddress: r.ipAddress,
+    }));
+
+    const completedAt = signedRecipients.reduce<Date>((latest, r) => {
+      const t = r.signedAt ? new Date(r.signedAt) : new Date();
+      return t > latest ? t : latest;
+    }, new Date(0));
+
+    const docMeta: DocMeta = {
+      documentName: doc.filename,
+      documentId: doc.id,
+      completedAt,
+    };
+
     const source = isGcsPath(doc.filepath)
       ? await getFileBuffer(doc.filepath)
       : doc.filepath;
 
-    const pdfBytes = await buildSignedPdf(source, entries);
+    const pdfBytes = await buildSignedPdf(source, entries, { doc: docMeta, signers: signerRecords });
     const safeName = doc.filename.replace(/[^a-z0-9.\-_]/gi, "_");
     res.set("Content-Type", "application/pdf");
     res.set("Content-Disposition", `attachment; filename="${safeName}"`);

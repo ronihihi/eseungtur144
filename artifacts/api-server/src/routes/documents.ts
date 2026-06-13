@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 import { eq, and } from "drizzle-orm";
 import { db, documentsTable, recipientsTable, signatureFieldsTable } from "@workspace/db";
 import type { Request, Response } from "express";
-import { buildSignedPdf } from "./pdfSigner.js";
+import { buildSignedPdf, SignerRecord, DocMeta } from "./pdfSigner.js";
 import { uploadToGcs, downloadFromGcs, streamFromGcs, isGcsPath } from "../lib/gcsStorage.js";
 
 const execFileAsync = promisify(execFile);
@@ -368,11 +368,29 @@ router.get("/documents/:id/download", requireAuth, async (req: Request, res: Res
         }));
     });
 
+    const signerRecords: SignerRecord[] = signedRecipients.map((r) => ({
+      name: r.signerName || r.teamName,
+      email: r.email,
+      signedAt: r.signedAt ? new Date(r.signedAt) : new Date(),
+      ipAddress: r.ipAddress,
+    }));
+
+    const completedAt = signedRecipients.reduce<Date>((latest, r) => {
+      const t = r.signedAt ? new Date(r.signedAt) : new Date();
+      return t > latest ? t : latest;
+    }, new Date(0));
+
+    const docMeta: DocMeta = {
+      documentName: doc.filename,
+      documentId: doc.id,
+      completedAt,
+    };
+
     const source = isGcsPath(doc.filepath)
       ? await getFileBuffer(doc.filepath)
       : doc.filepath;
 
-    const pdfBytes = await buildSignedPdf(source, entries);
+    const pdfBytes = await buildSignedPdf(source, entries, { doc: docMeta, signers: signerRecords });
     const safeName = doc.filename.replace(/[^a-z0-9.\-_]/gi, "_");
     res.set("Content-Type", "application/pdf");
     res.set("Content-Disposition", `attachment; filename="${safeName}"`);
