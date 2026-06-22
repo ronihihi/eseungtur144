@@ -1,7 +1,12 @@
 import { PDFDocument, PDFPage, PDFFont, rgb, StandardFonts, degrees } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
+import { createRequire } from "module";
 import { readFileSync } from "fs";
 import { createHash } from "crypto";
+
+// createRequire bound to this module so require.resolve uses artifacts/api-server
+// as the lookup root — works in both tsx (dev) and the esbuild ESM bundle (prod).
+const _nodeRequire = createRequire(import.meta.url);
 
 // ── Arabic font — lazy-loaded once, reused across all PDF builds ────────────
 let _arabicRegular: Buffer | null | undefined;
@@ -12,10 +17,8 @@ function loadArabicFontBytes(): { regular: Buffer | null; bold: Buffer | null } 
   try {
     // require.resolve uses Node's module resolution from this package, so it
     // correctly finds the font in artifacts/api-server/node_modules/
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const r = require;
-    _arabicRegular = readFileSync(r.resolve("@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff"));
-    _arabicBold    = readFileSync(r.resolve("@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-700-normal.woff"));
+    _arabicRegular = readFileSync(_nodeRequire.resolve("@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff"));
+    _arabicBold    = readFileSync(_nodeRequire.resolve("@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-700-normal.woff"));
   } catch {
     _arabicRegular = null;
     _arabicBold    = null;
@@ -508,7 +511,8 @@ export async function buildSignedPdf(
       const opts = labelAt(rotation, bx, by, bw, bh, fs, 0.5, 4);
       page.drawText(value, {
         x: opts.x, y: opts.y, size: fs,
-        rotate: opts.rotate, font: fontBold,
+        rotate: opts.rotate,
+        font: selectFont(value, fontBold, fontArabicBold),
         color: rgb(0.08, 0.08, 0.35),
       });
     }
