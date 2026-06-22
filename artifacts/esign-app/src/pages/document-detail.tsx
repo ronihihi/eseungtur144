@@ -6,7 +6,7 @@ import { z } from "zod";
 import { format } from "date-fns";
 import {
   ArrowLeft, Send, Plus, Trash2, Mail, CheckCircle2,
-  Clock, BellRing, Copy, Check, Save, FileText, Download,
+  Clock, BellRing, Copy, Check, Save, FileText, Download, RefreshCw,
   PenLine, Pen, CalendarDays, Type, Grip, ShieldCheck, ShieldX, Activity, MessageSquare,
 } from "lucide-react";
 
@@ -115,6 +115,47 @@ const sendSchema = z.object({
   subject: z.string().optional(),
   message: z.string().optional(),
 });
+
+function DownloadButton({ docId, filename, variant = "outline", label = "Download" }: {
+  docId: string;
+  filename: string;
+  variant?: "outline" | "default";
+  label?: string;
+}) {
+  const [isDownloading, setIsDownloading] = useState(false);
+  const { toast } = useToast();
+
+  const handleDownload = async () => {
+    setIsDownloading(true);
+    try {
+      const res = await fetch(`/api/documents/${docId}/download`, { credentials: "include" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? "Download failed");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({ variant: "destructive", title: "Download failed", description: (err as Error).message });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  return (
+    <Button variant={variant} size="sm" onClick={() => void handleDownload()} disabled={isDownloading}>
+      {isDownloading
+        ? <><RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" />Generating…</>
+        : <><Download className="mr-1.5 h-3.5 w-3.5" />{label}</>
+      }
+    </Button>
+  );
+}
 
 export function DocumentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -478,12 +519,7 @@ export function DocumentDetailPage() {
           <div className="flex items-center gap-3">
             <StatusBadge status={doc.status} />
             {isPdf && (
-              <a href={`/api/documents/${id}/download`} download={doc.filename}>
-                <Button variant="outline" size="sm">
-                  <Download className="mr-1.5 h-3.5 w-3.5" />
-                  Download
-                </Button>
-              </a>
+              <DownloadButton docId={id} filename={doc.filename} />
             )}
             {isDraft && (
               <AlertDialog>
@@ -669,14 +705,7 @@ export function DocumentDetailPage() {
                     In-browser preview is only available for PDF files.
                   </p>
                 </div>
-                <a
-                  href={`/api/documents/${id}/download`}
-                  download={doc.filename}
-                  className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                >
-                  <FileText className="h-4 w-4" />
-                  Download to view
-                </a>
+                <DownloadButton docId={id} filename={doc.filename} variant="default" label="Download to view" />
                 <p className="text-xs text-muted-foreground max-w-xs">
                   To use signature field placement, convert your document to PDF before uploading.
                 </p>

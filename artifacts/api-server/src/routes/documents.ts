@@ -341,17 +341,21 @@ router.get("/documents/:id/download", requireAuth, async (req: Request, res: Res
       return;
     }
 
-    const recipients = await db.select().from(recipientsTable).where(eq(recipientsTable.documentId, id));
-    const signedRecipients = recipients.filter((r) => r.status === "signed");
+    // Run all three DB queries + GCS download in parallel
+    const [recipients, allFields, fileSource] = await Promise.all([
+      db.select().from(recipientsTable).where(eq(recipientsTable.documentId, id)),
+      db.select().from(signatureFieldsTable).where(eq(signatureFieldsTable.documentId, id)),
+      isGcsPath(doc.filepath) ? getFileBuffer(doc.filepath) : Promise.resolve(doc.filepath),
+    ]);
 
-    const allFields = await db
-      .select()
-      .from(signatureFieldsTable)
-      .where(eq(signatureFieldsTable.documentId, id));
+    const signedRecipients = recipients.filter((r) => r.status === "signed");
+    const reviewerRecipients = recipients.filter((r) => r.requiresReview && r.reviewStatus);
 
     const entries = signedRecipients.flatMap((r) => {
       const recipientFields = allFields.filter((f) => f.recipientId === r.id);
-      const signedAt = r.signedAt ? new Date(r.signedAt) : new Date();
+      // Use actual signedAt — never fall back to current time (that would show wrong timestamp)
+      const signedAt = r.signedAt ? new Date(r.signedAt) : null;
+      if (!signedAt) return [];
       const signerName = r.signerName || r.teamName;
       return recipientFields
         .filter((f) => f.fieldValue)
@@ -368,32 +372,46 @@ router.get("/documents/:id/download", requireAuth, async (req: Request, res: Res
         }));
     });
 
-    const signerRecords: SignerRecord[] = signedRecipients.map((r) => ({
-      name: r.signerName || r.teamName,
-      email: r.email,
-      signedAt: r.signedAt ? new Date(r.signedAt) : new Date(),
-      ipAddress: r.ipAddress,
-    }));
+    const signerRecords: SignerRecord[] = signedRecipients
+      .filter((r) => r.signedAt)
+      .map((r) => ({
+        name: r.signerName || r.teamName,
+        email: r.email,
+        signedAt: new Date(r.signedAt!),
+        ipAddress: r.ipAddress,
+      }));
 
-    const completedAt = signedRecipients.reduce<Date>((latest, r) => {
-      const t = r.signedAt ? new Date(r.signedAt) : new Date();
-      return t > latest ? t : latest;
+    const reviewerRecords: ReviewerRecord[] = reviewerRecipients
+      .filter((r) => r.reviewedAt)
+      .map((r) => ({
+        name: r.signerName || r.teamName,
+        email: r.email,
+        reviewedAt: new Date(r.reviewedAt!),
+        ipAddress: r.ipAddress,
+        decision: (r.reviewStatus === "approved" ? "approved" : "changes_requested") as "approved" | "changes_requested",
+        note: r.reviewNote ?? null,
+      }));
+
+    // completedAt = latest actual signature time (never fallback to now)
+    const completedAt = signerRecords.reduce<Date>((latest, r) => {
+      return r.signedAt > latest ? r.signedAt : latest;
     }, new Date(0));
 
     const docMeta: DocMeta = {
       documentName: doc.filename,
       documentId: doc.id,
-      completedAt,
+      completedAt: completedAt.getTime() === 0 ? new Date() : completedAt,
     };
 
-    const source = isGcsPath(doc.filepath)
-      ? await getFileBuffer(doc.filepath)
-      : doc.filepath;
-
-    const pdfBytes = await buildSignedPdf(source, entries, { doc: docMeta, signers: signerRecords });
+    const pdfBytes = await buildSignedPdf(fileSource, entries, {
+      doc: docMeta,
+      signers: signerRecords,
+      reviewers: reviewerRecords,
+    });
     const safeName = doc.filename.replace(/[^a-z0-9.\-_]/gi, "_");
     res.set("Content-Type", "application/pdf");
     res.set("Content-Disposition", `attachment; filename="${safeName}"`);
+    res.set("Content-Length", String(pdfBytes.byteLength));
     res.send(Buffer.from(pdfBytes));
   } catch (err) {
     req.log.error({ err }, "download signed pdf error");
