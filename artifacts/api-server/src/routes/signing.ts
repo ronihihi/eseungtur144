@@ -304,10 +304,7 @@ router.post("/sign/:token/review", async (req: Request, res: Response) => {
       return;
     }
 
-    if (r.reviewStatus === "approved" || r.reviewStatus === "changes_requested") {
-      res.status(400).json({ error: "Review already submitted" });
-      return;
-    }
+    // Allow changing a previous decision (e.g. approved → request_changes or vice-versa)
 
     const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "";
     const ua = req.headers["user-agent"] ?? null;

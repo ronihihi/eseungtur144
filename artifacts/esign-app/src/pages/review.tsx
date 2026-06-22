@@ -181,6 +181,14 @@ export function ReviewPage() {
                 </p>
               </>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground"
+              onClick={() => { setSubmitted(false); setDecision(null); setPostReviewNextStep(null); }}
+            >
+              Change my decision
+            </Button>
           </CardContent>
         </Card>
       </div>
