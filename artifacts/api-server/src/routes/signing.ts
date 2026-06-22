@@ -62,10 +62,21 @@ type RecipientRow = typeof recipientsTable.$inferSelect;
 
 function computeNextStep(
   recipient: RecipientRow,
-  allRecipients: RecipientRow[]
+  allRecipients: RecipientRow[],
+  signingOrder: string
 ): "review" | "sign" | "done" | "blocked" {
   const reviewers = allRecipients.filter((r) => r.requiresReview);
   const gateOpen = reviewers.every((r) => r.reviewStatus === "approved");
+
+  // Helper: returns true when any earlier-ordered signer hasn't finished yet
+  const priorSignerPending = (rec: RecipientRow): boolean =>
+    signingOrder === "sequential" &&
+    allRecipients.some(
+      (r) =>
+        r.requiresSignature &&
+        r.signOrder < rec.signOrder &&
+        r.status !== "signed"
+    );
 
   if (recipient.requiresReview) {
     if (
@@ -76,14 +87,18 @@ function computeNextStep(
       return "review";
     }
     if (recipient.requiresSignature && recipient.status !== "signed") {
-      return gateOpen ? "sign" : "blocked";
+      if (!gateOpen) return "blocked";
+      if (priorSignerPending(recipient)) return "blocked";
+      return "sign";
     }
     return "done";
   }
 
   if (recipient.requiresSignature) {
     if (recipient.status === "signed") return "done";
-    return gateOpen ? "sign" : "blocked";
+    if (!gateOpen) return "blocked";
+    if (priorSignerPending(recipient)) return "blocked";
+    return "sign";
   }
 
   return "done";
@@ -257,7 +272,7 @@ router.get("/sign/:token", signingRateLimit, async (req: Request, res: Response)
       .from(recipientsTable)
       .where(eq(recipientsTable.documentId, r.documentId));
 
-    const nextStep = computeNextStep(r, allRecipients);
+    const nextStep = computeNextStep(r, allRecipients, doc?.signingOrder ?? "simultaneous");
 
     const approvedReviewers = allRecipients
       .filter((x) => x.requiresReview && x.reviewStatus === "approved")
@@ -321,6 +336,11 @@ router.post("/sign/:token/review", signingRateLimit, async (req: Request, res: R
 
     const r = recs[0];
 
+    if (r.tokenExpiresAt && r.tokenExpiresAt < new Date()) {
+      res.status(410).json({ error: "This signing link has expired" });
+      return;
+    }
+
     if (!r.requiresReview) {
       res.status(400).json({ error: "This link is not a review link" });
       return;
@@ -358,13 +378,12 @@ router.post("/sign/:token/review", signingRateLimit, async (req: Request, res: R
       userAgent: ua,
     });
 
-    if (decision === "approve") {
-      const docs = await db.select().from(documentsTable).where(eq(documentsTable.id, r.documentId)).limit(1);
-      const doc = docs[0];
-      if (doc) {
-        const baseUrl = getAppBaseUrl(req);
-        await maybeUnlockSigners(r.documentId, baseUrl, doc, r.teamName);
-      }
+    const reviewDocs = await db.select().from(documentsTable).where(eq(documentsTable.id, r.documentId)).limit(1);
+    const reviewDoc = reviewDocs[0];
+
+    if (decision === "approve" && reviewDoc) {
+      const baseUrl = getAppBaseUrl(req);
+      await maybeUnlockSigners(r.documentId, baseUrl, reviewDoc, r.teamName);
     }
 
     // Re-fetch all recipients to compute accurate nextStep after the update
@@ -374,7 +393,7 @@ router.post("/sign/:token/review", signingRateLimit, async (req: Request, res: R
       .where(eq(recipientsTable.documentId, r.documentId));
 
     const updatedRecipient = allRecipientsAfter.find((x) => x.token === token)!;
-    const nextStep = computeNextStep(updatedRecipient, allRecipientsAfter);
+    const nextStep = computeNextStep(updatedRecipient, allRecipientsAfter, reviewDoc?.signingOrder ?? "simultaneous");
 
     res.json({ success: true, nextStep, requiresSignature: r.requiresSignature });
   } catch (err) {
@@ -407,6 +426,11 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
 
     const r = recs[0];
 
+    if (r.tokenExpiresAt && r.tokenExpiresAt < new Date()) {
+      res.status(410).json({ error: "This signing link has expired" });
+      return;
+    }
+
     if (r.status === "signed") {
       res.status(400).json({ error: "Already signed" });
       return;
@@ -417,9 +441,12 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
       .from(recipientsTable)
       .where(eq(recipientsTable.documentId, r.documentId));
 
-    const nextStep = computeNextStep(r, allRecipients);
+    const docs = await db.select().from(documentsTable).where(eq(documentsTable.id, r.documentId)).limit(1);
+    const doc = docs[0];
+
+    const nextStep = computeNextStep(r, allRecipients, doc?.signingOrder ?? "simultaneous");
     if (nextStep === "blocked") {
-      res.status(409).json({ error: "Document is awaiting reviewer approval before signing is allowed" });
+      res.status(409).json({ error: "Signing is not yet available — either awaiting reviewer approval or a prior signer has not yet completed" });
       return;
     }
     if (nextStep === "review") {
@@ -470,9 +497,6 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
           .where(eq(signatureFieldsTable.id, field.id));
       }
     }
-
-    const docs = await db.select().from(documentsTable).where(eq(documentsTable.id, r.documentId)).limit(1);
-    const doc = docs[0];
 
     const freshRecipients = await db
       .select()
@@ -587,6 +611,10 @@ router.get("/sign/:token/download", signingRateLimit, async (req: Request, res: 
       res.status(404).json({ error: "Invalid signing link" });
       return;
     }
+    if (recs[0].tokenExpiresAt && recs[0].tokenExpiresAt < new Date()) {
+      res.status(410).json({ error: "This signing link has expired" });
+      return;
+    }
     const docId = recs[0].documentId;
     const docs = await db.select().from(documentsTable).where(eq(documentsTable.id, docId)).limit(1);
     const doc = docs[0];
@@ -690,6 +718,11 @@ router.get("/sign/:token/file", signingRateLimit, async (req: Request, res: Resp
 
     if (recs.length === 0) {
       res.status(404).json({ error: "Invalid signing link" });
+      return;
+    }
+
+    if (recs[0].tokenExpiresAt && recs[0].tokenExpiresAt < new Date()) {
+      res.status(410).json({ error: "This signing link has expired" });
       return;
     }
 
