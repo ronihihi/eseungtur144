@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -186,8 +186,10 @@ export function DocumentDetailPage() {
 
   const { fields: formFields, append, remove } = useFieldArray({ control: form.control, name: "recipients" });
 
+  const recipientsInitialized = useRef(false);
   useEffect(() => {
-    if (detailData?.recipients && detailData.recipients.length > 0 && isDraft) {
+    if (detailData?.recipients && detailData.recipients.length > 0 && isDraft && !recipientsInitialized.current) {
+      recipientsInitialized.current = true;
       form.reset({
         recipients: detailData.recipients.map((r) => ({
           teamName: r.teamName,
@@ -199,8 +201,10 @@ export function DocumentDetailPage() {
     }
   }, [detailData, isDraft, form]);
 
+  const sendFormInitialized = useRef(false);
   useEffect(() => {
-    if (doc?.title) {
+    if (doc?.title && !sendFormInitialized.current) {
+      sendFormInitialized.current = true;
       sendForm.reset({
         subject: `Signature Request: ${doc.title}`,
         message: `Please review and sign the document "${doc.title}".`,
