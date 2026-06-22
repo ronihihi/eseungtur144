@@ -34,6 +34,7 @@ export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 export const UserRole = {
   admin: "admin",
   user: "user",
+  auditor: "auditor",
 } as const;
 
 export interface User {
@@ -306,6 +307,7 @@ export type CreateUserRequestRole =
 export const CreateUserRequestRole = {
   admin: "admin",
   user: "user",
+  auditor: "auditor",
 } as const;
 
 export interface CreateUserRequest {
@@ -322,6 +324,7 @@ export type UpdateRoleRequestRole =
 export const UpdateRoleRequestRole = {
   admin: "admin",
   user: "user",
+  auditor: "auditor",
 } as const;
 
 export interface UpdateRoleRequest {

@@ -1,0 +1,35 @@
+Where I'd adjust its severity calls
+
+Azure JWT (R1, rated Critical): must-fix, agreed — but the severity hinges on something the doc didn't check: whether any route accepts a client-supplied id_token. In the pure server-side code exchange, the token arrives from Microsoft over TLS, so it isn't trivially remote-exploitable. If there's any client-facing token path, it's instant admin impersonation. Verify the RS256 signature against the JWKS either way — it's a few lines.
+CORS origin:true (R2, High) vs your SameSite=lax cookie: lax already stops the browser from attaching the session cookie to cross-site fetch, so the practical credential-theft/CSRF risk is lower than "High" implies. Still lock the origin to your domain — it's wrong as written — just don't treat it as the fire.
+The risk table double-counts Helmet (R6 and R11 are the same finding), so it's ~13 issues, not 14.
+The rel=noopener ✅ rests on bad reasoning — "React renders static HTML" doesn't prevent tabnabbing. Grep for target="_blank" and window.open to actually confirm nothing's exposed.
+
+What it missed
+
+Biggest one: it labels endpoints "Session (owner)" / "Session (admin)" but never verifies the handlers enforce it. If GET /api/documents/:id doesn't check uploadedBy === session user, any logged-in user can read anyone's documents and recipient PII — classic IDOR. Test this directly; it's the most likely latent hole, and the export takes the auth labels on faith.
+The signing token is the credential and it rides in the URL (/sign/:token), so it leaks through referer headers, browser history, and proxy logs — and per R8 it never expires. Treat "token in URL + no expiry" as one compounded problem.
+Confirm GCS objects aren't publicly readable — check that PUBLIC_OBJECT_SEARCH_PATHS doesn't cover the documents/ prefix, or signed documents are world-readable to anyone with the path.
+
+Order I'd fix in
+Today (minutes each, catastrophic if wrong):
+
+Confirm SESSION_SECRET is genuinely set in prod Secrets — the doc's ✅ may be an assumption, since the value is redacted to the agent. Then delete the fallback so the app throws without it. As written, if it's ever unset, anyone can forge an admin session from a string that's sitting in your source.
+Run the IDOR test above.
+
+Before production:
+
+3. Verify the Azure id_token signature (if SSO is enabled).
+
+4. Lock CORS to your domain.
+
+5. Move sessions to connect-pg-simple — you already run Postgres, and with Autoscale deployment, MemoryStore doesn't just drop sessions on restart, it breaks login across instances the moment you scale past one.
+
+6. Add Helmet (CSP + frame-ancestors) and rate-limiting on auth + signing endpoints.
+
+7. Add token expiry.
+The architectural one (most important for what this actually is):
+
+8. Stop regenerating the signed PDF from mutable rows on every download. On completion, render it once, hash the final PDF, store the PDF in GCS and the hash in an append-only record, then serve that stored artifact forever after. This is the same immutability work you've been doing on the audit trail — extend it to the signed output. Until then a "signed" document is retroactively editable by anyone who can touch a row, which undercuts the whole point of an e-signature system, and the cert's SHA-256 only covers the original file, so it won't detect the change.
+One reconciliation: this report (commit 6112f23, dated today) shows no Helmet, no CSP, no cookie hardening — but you'd already done Helmet/CSP/tabnabbing remediation. Either this is a different branch/codebase or that work isn't in this build. Worth confirming which before you redo it or ship the wrong branch.
+If it's useful, I can turn that priority order into a remediation prompt for the Replit agent — batched by tier, with the specific changes — in the same format as your other ones.

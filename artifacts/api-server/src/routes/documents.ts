@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 import { eq, and } from "drizzle-orm";
 import { db, documentsTable, recipientsTable, signatureFieldsTable } from "@workspace/db";
 import type { Request, Response } from "express";
-import { buildSignedPdf, SignerRecord, DocMeta } from "./pdfSigner.js";
+import { buildSignedPdf, SignerRecord, ReviewerRecord, DocMeta } from "./pdfSigner.js";
 import { uploadToGcs, downloadFromGcs, streamFromGcs, isGcsPath } from "../lib/gcsStorage.js";
 
 const execFileAsync = promisify(execFile);

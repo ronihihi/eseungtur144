@@ -32,7 +32,7 @@ export const RegisterResponse = zod.object({
     name: zod.string(),
     email: zod.string(),
     hasSavedSignature: zod.boolean(),
-    role: zod.enum(["admin", "user"]),
+    role: zod.enum(["admin", "user", "auditor"]),
   }),
 });
 
@@ -51,7 +51,7 @@ export const LoginResponse = zod.object({
     name: zod.string(),
     email: zod.string(),
     hasSavedSignature: zod.boolean(),
-    role: zod.enum(["admin", "user"]),
+    role: zod.enum(["admin", "user", "auditor"]),
   }),
 });
 
@@ -73,7 +73,7 @@ export const GetMeResponse = zod.object({
         name: zod.string(),
         email: zod.string(),
         hasSavedSignature: zod.boolean(),
-        role: zod.enum(["admin", "user"]),
+        role: zod.enum(["admin", "user", "auditor"]),
       }),
       zod.null(),
     ])
@@ -455,7 +455,7 @@ export const ListAdminUsersResponse = zod.object({
       id: zod.string(),
       name: zod.string(),
       email: zod.string(),
-      role: zod.enum(["admin", "user"]),
+      role: zod.enum(["admin", "user", "auditor"]),
       provider: zod.enum(["local", "azure"]),
       createdAt: zod.string(),
     }),
@@ -471,7 +471,7 @@ export const CreateAdminUserBody = zod.object({
   name: zod.string(),
   email: zod.string().email(),
   password: zod.string().min(createAdminUserBodyPasswordMin),
-  role: zod.enum(["admin", "user"]).optional(),
+  role: zod.enum(["admin", "user", "auditor"]).optional(),
 });
 
 export const CreateAdminUserResponse = zod.object({
@@ -515,7 +515,7 @@ export const UpdateAdminUserRoleParams = zod.object({
 });
 
 export const UpdateAdminUserRoleBody = zod.object({
-  role: zod.enum(["admin", "user"]),
+  role: zod.enum(["admin", "user", "auditor"]),
 });
 
 export const UpdateAdminUserRoleResponse = zod.object({

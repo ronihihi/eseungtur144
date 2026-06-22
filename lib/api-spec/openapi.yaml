@@ -735,7 +735,7 @@ components:
           type: boolean
         role:
           type: string
-          enum: [admin, user]
+          enum: [admin, user, auditor]
       required:
         - id
         - name
@@ -1173,7 +1173,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, user]
+          enum: [admin, user, auditor]
         provider:
           type: string
           enum: [local, azure]
@@ -1210,7 +1210,7 @@ components:
           minLength: 6
         role:
           type: string
-          enum: [admin, user]
+          enum: [admin, user, auditor]
       required:
         - name
         - email
@@ -1221,7 +1221,7 @@ components:
       properties:
         role:
           type: string
-          enum: [admin, user]
+          enum: [admin, user, auditor]
       required:
         - role
 

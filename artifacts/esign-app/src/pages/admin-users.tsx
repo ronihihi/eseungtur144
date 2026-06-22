@@ -8,7 +8,7 @@ import {
   useDeleteAdminUser,
   useUpdateAdminUserRole,
 } from "@workspace/api-client-react";
-import type { AdminUser } from "@workspace/api-client-react";
+import type { AdminUser, UpdateRoleRequestRole } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -133,8 +133,8 @@ export function AdminUsersPage() {
   };
 
   const handleToggleRole = (user: AdminUser) => {
-    const roleMap: Record<string, string> = { admin: "user", auditor: "admin", user: "admin" };
-    const newRole = roleMap[user.role] ?? "user";
+    const roleMap: Record<string, UpdateRoleRequestRole> = { admin: "user", auditor: "admin", user: "admin" };
+    const newRole: UpdateRoleRequestRole = roleMap[user.role] ?? "user";
     const roleLabel: Record<string, string> = { admin: "an Admin", auditor: "an Auditor", user: "a User" };
     roleMutation.mutate(
       { id: user.id, data: { role: newRole } },
