@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import {
   ArrowLeft, Send, Plus, Trash2, Mail, CheckCircle2,
   Clock, BellRing, Copy, Check, Save, FileText, Download,
-  PenLine, Pen, CalendarDays, Type, Grip, ShieldCheck, Activity,
+  PenLine, Pen, CalendarDays, Type, Grip, ShieldCheck, Activity, MessageSquare,
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
@@ -945,7 +945,7 @@ export function DocumentDetailPage() {
                               {idx + 1}
                             </div>
                           )}
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="text-sm font-medium truncate">{recipient.teamName}</div>
                             <div className="text-xs text-muted-foreground truncate flex items-center gap-1">
                               <Mail className="h-3 w-3 shrink-0" />{recipient.email}
@@ -953,6 +953,13 @@ export function DocumentDetailPage() {
                             {recipient.signerName && (
                               <div className="text-xs text-muted-foreground">Signed by {recipient.signerName}</div>
                             )}
+                            {(recipient as { reviewStatus?: string; reviewNote?: string | null }).reviewStatus === "changes_requested" &&
+                              (recipient as { reviewNote?: string | null }).reviewNote && (
+                                <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800 flex gap-1.5">
+                                  <MessageSquare className="h-3.5 w-3.5 shrink-0 mt-px text-amber-500" />
+                                  <span className="whitespace-pre-wrap break-words">{(recipient as { reviewNote?: string | null }).reviewNote}</span>
+                                </div>
+                              )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
