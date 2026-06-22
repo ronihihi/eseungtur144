@@ -1,6 +1,37 @@
 import { PDFDocument, PDFPage, PDFFont, rgb, StandardFonts, degrees } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import { readFileSync } from "fs";
 import { createHash } from "crypto";
+
+// ── Arabic font — lazy-loaded once, reused across all PDF builds ────────────
+let _arabicRegular: Buffer | null | undefined;
+let _arabicBold: Buffer | null | undefined;
+
+function loadArabicFontBytes(): { regular: Buffer | null; bold: Buffer | null } {
+  if (_arabicRegular !== undefined) return { regular: _arabicRegular, bold: _arabicBold ?? null };
+  try {
+    // require.resolve uses Node's module resolution from this package, so it
+    // correctly finds the font in artifacts/api-server/node_modules/
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const r = require;
+    _arabicRegular = readFileSync(r.resolve("@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff"));
+    _arabicBold    = readFileSync(r.resolve("@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-700-normal.woff"));
+  } catch {
+    _arabicRegular = null;
+    _arabicBold    = null;
+  }
+  return { regular: _arabicRegular, bold: _arabicBold ?? null };
+}
+
+/** True when the string contains any Arabic/RTL Unicode character. */
+function hasArabic(s: string): boolean {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
+}
+
+/** Pick the Arabic font when the text contains Arabic; otherwise use the Latin font. */
+function selectFont(s: string, latin: PDFFont, arabic: PDFFont): PDFFont {
+  return hasArabic(s) ? arabic : latin;
+}
 
 export interface FieldEntry {
   fieldType: "signature" | "initials" | "date" | "text";
@@ -244,6 +275,8 @@ async function addAuditPage(
   docHash: string,
   font: PDFFont,
   fontBold: PDFFont,
+  fontArabic: PDFFont,
+  fontArabicBold: PDFFont,
   pageNum: number,
   totalPages: number,
 ): Promise<void> {
@@ -287,13 +320,16 @@ async function addAuditPage(
 
   const kv = (label: string, value: string, valueColor = darkText, bold = false) => {
     page.drawText(label, { x: margin, y, size: 8.5, font: fontBold, color: midText });
-    page.drawText(value, { x: margin + 135, y, size: 8.5, font: bold ? fontBold : font, color: valueColor });
+    const vFont = bold
+      ? selectFont(value, fontBold, fontArabicBold)
+      : selectFont(value, font, fontArabic);
+    page.drawText(value, { x: margin + 135, y, size: 8.5, font: vFont, color: valueColor });
     y -= 16;
   };
 
   // ── Document Information ───────────────────────────────────────────────────
   sectionLabel("DOCUMENT INFORMATION");
-  kv("Document Name:", safeText(truncate(doc.documentName, 52)));
+  kv("Document Name:", truncate(doc.documentName, 52));
   kv("Document ID:", doc.documentId);
   kv("Signing Status:", "COMPLETED", successGreen, true);
   kv("Certificate ID:", certId, brandBlue, true);
@@ -322,14 +358,15 @@ async function addAuditPage(
     // Show only the first (real client) IP — strip proxy hops after the first comma
     const firstIp = s.ipAddress ? s.ipAddress.split(",")[0].trim() : "\u2014";
     const cells = [
-      safeText(truncate(s.name, 18)),
-      safeText(truncate(s.email, 24)),
+      truncate(s.name, 18),
+      truncate(s.email, 24),
       fmtDateTime(s.signedAt),
       firstIp,
       "Email Verification",
     ];
     cells.forEach((c, ci) => {
-      page.drawText(c, { x: colX[ci] + 3, y: y - 3, size: 7.5, font, color: darkText });
+      const cellFont = selectFont(c, font, fontArabic);
+      page.drawText(c, { x: colX[ci] + 3, y: y - 3, size: 7.5, font: cellFont, color: darkText });
     });
     y -= rowH;
     page.drawLine({
@@ -385,9 +422,15 @@ export async function buildSignedPdf(
 ): Promise<Uint8Array> {
   const pdfBytes = Buffer.isBuffer(source) ? source : readFileSync(source);
   const pdfDoc = await PDFDocument.load(pdfBytes);
+  pdfDoc.registerFontkit(fontkit);
   const pages = pdfDoc.getPages();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  // Arabic fonts — embedded once per PDF; fall back to Helvetica if unavailable
+  const { regular: arabicRegularBytes, bold: arabicBoldBytes } = loadArabicFontBytes();
+  const fontArabic     = arabicRegularBytes ? await pdfDoc.embedFont(arabicRegularBytes) : font;
+  const fontArabicBold = arabicBoldBytes    ? await pdfDoc.embedFont(arabicBoldBytes)    : fontBold;
 
   // ── Draw field overlays ──────────────────────────────────────────────────
   for (const entry of entries) {
@@ -440,9 +483,10 @@ export async function buildSignedPdf(
 
       const nameFs = Math.max(4.5, Math.min(6.5, Math.min(dispW, dispH) * 0.14));
       const nameOpts = labelAt(rotation, bx, by, bw, bh, nameFs, 0.76, 3);
-      page.drawText(safeText(entry.signerName), {
+      page.drawText(entry.signerName, {
         x: nameOpts.x, y: nameOpts.y, size: nameFs,
-        rotate: nameOpts.rotate, font: fontBold,
+        rotate: nameOpts.rotate,
+        font: selectFont(entry.signerName, fontBold, fontArabicBold),
         color: rgb(0.1, 0.1, 0.1),
       });
 
@@ -485,7 +529,7 @@ export async function buildSignedPdf(
     }
 
     // Audit certificate page at the end
-    await addAuditPage(pdfDoc, doc, signers, certId, docHash, font, fontBold, totalPages, totalPages);
+    await addAuditPage(pdfDoc, doc, signers, certId, docHash, font, fontBold, fontArabic, fontArabicBold, totalPages, totalPages);
   }
 
   return pdfDoc.save();

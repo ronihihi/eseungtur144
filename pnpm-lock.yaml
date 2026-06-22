@@ -166,9 +166,15 @@ importers:
 
   artifacts/api-server:
     dependencies:
+      '@fontsource/noto-sans-arabic':
+        specifier: ^5.2.10
+        version: 5.2.10
       '@google-cloud/storage':
         specifier: ^7.19.0
         version: 7.19.0
+      '@pdf-lib/fontkit':
+        specifier: ^1.1.1
+        version: 1.1.1
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
@@ -807,6 +813,9 @@ packages:
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
 
+  '@fontsource/noto-sans-arabic@5.2.10':
+    resolution: {integrity: sha512-Hgj3NwQJ0NquIADW3hFboFjsts4UvEOJQ8tOX0bhQZgpNKHsMawjv/1SZnq0QvRbP6efHTZM/A1k7tdy9S6sbA==}
+
   '@gerrit0/mini-shiki@3.23.0':
     resolution: {integrity: sha512-bEMORlG0cqdjVyCEuU0cDQbORWX+kYCeo0kV1lbxF5bt4r7SID2l9bqsxJEM0zndaxpOUT7riCyIVEuqq/Ynxg==}
 
@@ -974,6 +983,9 @@ packages:
 
   '@orval/zod@8.5.3':
     resolution: {integrity: sha512-qcbnpGE0VrgCDm0hNWQSOmzbfgdnr1xo+PYQ3PJjxfLuk3kGdJmFANTr53/1lI3sZUvWZwX5nKJCLWVxvwJEgg==}
+
+  '@pdf-lib/fontkit@1.1.1':
+    resolution: {integrity: sha512-KjMd7grNapIWS/Dm0gvfHEilSyAmeLvrEGVcqLGi0VYebuqqzTbgF29efCx7tvx+IEbG3zQciRSWl3GkUSvjZg==}
 
   '@pdf-lib/standard-fonts@1.0.0':
     resolution: {integrity: sha512-hU30BK9IUN/su0Mn9VdlVKsWBS6GyhVfqjwl1FjZN4TxP6cCw0jP2w7V3Hf5uX7M0AZJ16vey9yE0ny7Sa59ZA==}
@@ -3263,6 +3275,7 @@ packages:
   recharts@2.15.4:
     resolution: {integrity: sha512-UT/q6fwS3c1dHbXv2uFgYJ9BMFHu3fwnd7AYZaEQhXuYQ4hgsxLvsUXzGdKeZrW5xopzDCvuA2N41WJ88I7zIw==}
     engines: {node: '>=14'}
+    deprecated: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
     peerDependencies:
       react: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -3467,6 +3480,7 @@ packages:
   tsconfck@3.1.6:
     resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
     engines: {node: ^18 || >=20}
+    deprecated: unmaintained
     hasBin: true
     peerDependencies:
       typescript: ^5.0.0
@@ -3850,6 +3864,8 @@ snapshots:
 
   '@floating-ui/utils@0.2.11': {}
 
+  '@fontsource/noto-sans-arabic@5.2.10': {}
+
   '@gerrit0/mini-shiki@3.23.0':
     dependencies:
       '@shikijs/engine-oniguruma': 3.23.0
@@ -4080,6 +4096,10 @@ snapshots:
       - '@faker-js/faker'
       - supports-color
       - typescript
+
+  '@pdf-lib/fontkit@1.1.1':
+    dependencies:
+      pako: 1.0.11
 
   '@pdf-lib/standard-fonts@1.0.0':
     dependencies:
