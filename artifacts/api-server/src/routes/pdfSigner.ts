@@ -46,6 +46,35 @@ function truncate(s: string, maxLen: number): string {
   return s.length <= maxLen ? s : s.slice(0, maxLen - 1) + "\u2026";
 }
 
+/**
+ * pdf-lib's standard fonts (Helvetica/HelveticaBold) use WinAnsi (Windows-1252)
+ * encoding, which covers only a subset of Unicode. Any character outside that
+ * set — Arabic, Hebrew, CJK, emoji, etc. — will throw at render time.
+ *
+ * This function replaces every unsupported character with "?" so the PDF
+ * always generates, even when names/filenames contain non-Latin text.
+ */
+const WIN_ANSI_EXTRAS = new Set([
+  0x0152, 0x0153, 0x0160, 0x0161, 0x0178, 0x017D, 0x017E,
+  0x0192, 0x02C6, 0x02DC, 0x2013, 0x2014, 0x2018, 0x2019,
+  0x201A, 0x201C, 0x201D, 0x201E, 0x2020, 0x2021, 0x2022,
+  0x2026, 0x2030, 0x2039, 0x203A, 0x20AC, 0x2122,
+]);
+
+function safeText(s: string): string {
+  return [...s].map((ch) => {
+    const cp = ch.codePointAt(0)!;
+    if (
+      (cp >= 0x0020 && cp <= 0x007e) ||   // printable ASCII
+      (cp >= 0x00a0 && cp <= 0x00ff) ||   // Latin-1 supplement
+      WIN_ANSI_EXTRAS.has(cp)              // WinAnsi extras (curly quotes, em-dash, etc.)
+    ) {
+      return ch;
+    }
+    return "?";
+  }).join("");
+}
+
 function generateCertId(documentId: string, completedAt: Date): string {
   const year = completedAt.getFullYear();
   const hash = createHash("sha256")
@@ -264,7 +293,7 @@ async function addAuditPage(
 
   // ── Document Information ───────────────────────────────────────────────────
   sectionLabel("DOCUMENT INFORMATION");
-  kv("Document Name:", truncate(doc.documentName, 52));
+  kv("Document Name:", safeText(truncate(doc.documentName, 52)));
   kv("Document ID:", doc.documentId);
   kv("Signing Status:", "COMPLETED", successGreen, true);
   kv("Certificate ID:", certId, brandBlue, true);
@@ -293,8 +322,8 @@ async function addAuditPage(
     // Show only the first (real client) IP — strip proxy hops after the first comma
     const firstIp = s.ipAddress ? s.ipAddress.split(",")[0].trim() : "\u2014";
     const cells = [
-      truncate(s.name, 18),
-      truncate(s.email, 24),
+      safeText(truncate(s.name, 18)),
+      safeText(truncate(s.email, 24)),
       fmtDateTime(s.signedAt),
       firstIp,
       "Email Verification",
@@ -411,7 +440,7 @@ export async function buildSignedPdf(
 
       const nameFs = Math.max(4.5, Math.min(6.5, Math.min(dispW, dispH) * 0.14));
       const nameOpts = labelAt(rotation, bx, by, bw, bh, nameFs, 0.76, 3);
-      page.drawText(entry.signerName, {
+      page.drawText(safeText(entry.signerName), {
         x: nameOpts.x, y: nameOpts.y, size: nameFs,
         rotate: nameOpts.rotate, font: fontBold,
         color: rgb(0.1, 0.1, 0.1),
