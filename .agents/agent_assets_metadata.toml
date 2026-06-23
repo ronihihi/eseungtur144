@@ -6,3 +6,9 @@ id = "crwdJZf2LYsH_Q7Gh2EWW"
 uri = "file://workflowsign_production.tar.gz"
 type = "unspecified"
 title = "WorkflowSign — Production Database Export"
+
+[[outputs]]
+id = "IBHj69v8ygjjTV8zLFY0E"
+uri = "file://workflowsign.env.txt"
+type = "text"
+title = "WorkflowSign — .env Template for DigitalOcean"
