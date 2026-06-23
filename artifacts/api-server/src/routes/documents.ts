@@ -15,18 +15,33 @@ import { uploadToGcs, downloadFromGcs, streamFromGcs, isGcsPath } from "../lib/g
 
 const execFileAsync = promisify(execFile);
 
-const SOFFICE_CANDIDATES = [
+const SOFFICE_STATIC_CANDIDATES = [
   "soffice",
   "/usr/bin/soffice",
   "/usr/lib/libreoffice/program/soffice",
-  "/nix/store/074580fbnhxwxldi7g30hz5ll1h471za-libreoffice-7.6.7.2-wrapped/bin/soffice",
 ];
 
 let _sofficeCache: string | null = null;
 
 async function findSoffice(): Promise<string> {
   if (_sofficeCache) return _sofficeCache;
-  for (const candidate of SOFFICE_CANDIDATES) {
+
+  // Dynamically scan the Nix store for any LibreOffice wrapped binary —
+  // the hash prefix changes whenever Nix rebuilds the package.
+  const nixCandidates: string[] = [];
+  try {
+    const nixStore = "/nix/store";
+    const entries = fs.readdirSync(nixStore);
+    for (const entry of entries) {
+      if (entry.includes("libreoffice") && entry.includes("wrapped")) {
+        nixCandidates.push(path.join(nixStore, entry, "bin", "soffice"));
+      }
+    }
+  } catch {
+    // /nix/store not available — skip
+  }
+
+  for (const candidate of [...SOFFICE_STATIC_CANDIDATES, ...nixCandidates]) {
     try {
       await execFileAsync(candidate, ["--version"], { timeout: 5_000 });
       _sofficeCache = candidate;
@@ -49,12 +64,11 @@ async function convertDocxToPdf(inputPath: string, outputDir: string): Promise<s
         "--norestore",
         "--nofirststartwizard",
         `-env:UserInstallation=file://${tmpProfile}`,
-        "--infilter=Microsoft Word 2007-2019 XML (.docx)",
-        "--convert-to", "pdf:writer_pdf_Export",
+        "--convert-to", "pdf",
         "--outdir", outputDir,
         inputPath,
       ],
-      { env: { ...process.env, HOME: "/tmp", LANG: "en_US.UTF-8" }, timeout: 60_000 }
+      { env: { ...process.env, HOME: "/tmp" }, timeout: 60_000 }
     );
     const baseName = path.basename(inputPath, path.extname(inputPath));
     return path.join(outputDir, baseName + ".pdf");
