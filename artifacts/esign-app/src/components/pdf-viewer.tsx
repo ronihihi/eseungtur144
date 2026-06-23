@@ -49,6 +49,7 @@ export function PdfViewer({
 
   return (
     <div className={`flex flex-col items-center gap-3 w-full ${className}`}>
+      <div className="w-full max-w-[816px] mx-auto">
       <div
         ref={measuredRef}
         className={`relative w-full border rounded-lg overflow-hidden shadow-sm bg-white ${
@@ -87,6 +88,7 @@ export function PdfViewer({
             {renderOverlay()}
           </div>
         )}
+      </div>
       </div>
 
       {numPages > 1 && (
