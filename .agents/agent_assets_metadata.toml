@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "crwdJZf2LYsH_Q7Gh2EWW"
+uri = "file://workflowsign_production.tar.gz"
+type = "unspecified"
+title = "WorkflowSign — Production Database Export"
