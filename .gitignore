@@ -65,3 +65,8 @@ build/
 # Replit local files
 .replit
 .cache/
+workflowsign.env.txt
+workflowsign.sql
+workflowsign_production.sql
+workflowsign_production.tar.gz
+bucket-export/
