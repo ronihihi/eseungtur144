@@ -12,3 +12,9 @@ id = "IBHj69v8ygjjTV8zLFY0E"
 uri = "file://workflowsign.env.txt"
 type = "text"
 title = "WorkflowSign — .env Template for DigitalOcean"
+
+[[outputs]]
+id = "K0Pfx5bSGS8-MeD7-5TWB"
+uri = "file://envermentsss.md"
+type = "text"
+title = "WorkflowSign — Environment Variables Reference"
