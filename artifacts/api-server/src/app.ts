@@ -4,9 +4,12 @@ import session from "express-session";
 import pinoHttp from "pino-http";
 import helmet from "helmet";
 import connectPgSimple from "connect-pg-simple";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { pool } from "@workspace/db";
 
 const app: Express = express();
 
@@ -172,7 +175,7 @@ app.use(
 const PgStore = connectPgSimple(session);
 
 const sessionStore = new PgStore({
-  conString: databaseUrl,
+  pool,
   tableName: "user_sessions",
   createTableIfMissing: true,
   pruneSessionInterval: 60 * 60,
@@ -219,13 +222,34 @@ app.get("/health", (_req, res) => {
 
 app.use("/api", router);
 
-// ── Not-found handler ────────────────────────────────────────────────────────
+// ── API not-found handler ─────────────────────────────────────────────────────
+// Scoped to /api so that non-API paths fall through to the frontend static files.
 
-app.use((req, res) => {
+app.use("/api", (req: express.Request, res: express.Response) => {
   res.status(404).json({
     error: "Not Found",
     message: `Route ${req.method} ${req.originalUrl} was not found`,
   });
+});
+
+// ── Frontend static files ─────────────────────────────────────────────────────
+// In production the React build is copied to ./public (one level up from ./dist/).
+// In development this directory won't exist, so express.static is a no-op.
+
+const publicDir = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../public",
+);
+
+app.use(express.static(publicDir));
+
+// /sign/* uses sign.html (noindex meta tag); everything else uses index.html.
+app.use("/sign", (_req: express.Request, res: express.Response) => {
+  res.sendFile(path.join(publicDir, "sign.html"));
+});
+
+app.use((_req: express.Request, res: express.Response) => {
+  res.sendFile(path.join(publicDir, "index.html"));
 });
 
 // ── Central error handler ────────────────────────────────────────────────────

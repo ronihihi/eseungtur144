@@ -1,0 +1,55 @@
+name: workflowsign
+region: fra
+
+services:
+  - name: api
+    dockerfile_path: Dockerfile
+    github:
+      repo: your-github-org/workflowsign
+      branch: main
+      deploy_on_push: true
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    health_check:
+      http_path: /health
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "8080"
+      - key: DATABASE_URL
+        value: ${db.DATABASE_URL}
+        type: SECRET
+      - key: DATABASE_CA_CERT
+        value: ${db.CA_CERT}
+      - key: SESSION_SECRET
+        value: ""
+        type: SECRET
+      - key: APP_URL
+        value: ${APP_URL}
+      - key: APP_ORIGIN
+        value: ${APP_URL}
+      - key: GCP_SA_KEY_B64
+        value: ""
+        type: SECRET
+      - key: DEFAULT_OBJECT_STORAGE_BUCKET_ID
+        value: your-gcs-bucket-id
+      - key: SMTP_HOST
+        value: ""
+        type: SECRET
+      - key: SMTP_PORT
+        value: ""
+        type: SECRET
+      - key: SMTP_USER
+        value: ""
+        type: SECRET
+      - key: SMTP_PASS
+        value: ""
+        type: SECRET
+
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    production: true

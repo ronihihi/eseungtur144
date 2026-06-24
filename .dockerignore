@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.replit
+replit.nix
+.replit-artifact
+bucket-export
+workflowsign.sql
+workflowsign_production.sql
+workflowsign_production.tar.gz
+*.log
+.local
+.cache
+attached_assets

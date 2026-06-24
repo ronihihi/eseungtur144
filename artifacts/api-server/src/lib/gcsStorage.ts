@@ -1,26 +1,18 @@
-import { Storage as GcsStorage } from "@google-cloud/storage";
+import { Storage } from "@google-cloud/storage";
 import type { Response } from "express";
 
-const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
+let _gcsClient: Storage | null = null;
 
-const gcsClient = new GcsStorage({
-  credentials: {
-    audience: "replit",
-    subject_token_type: "access_token",
-    token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
-    type: "external_account",
-    credential_source: {
-      url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
-      format: {
-        type: "json",
-        subject_token_field_name: "access_token",
-      },
-    },
-    universe_domain: "googleapis.com",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any,
-  projectId: "",
-});
+function getGcsClient(): Storage {
+  if (_gcsClient) return _gcsClient;
+  const b64 = process.env.GCP_SA_KEY_B64;
+  if (!b64) throw new Error("GCP_SA_KEY_B64 is not set — file storage is unavailable.");
+  const creds = JSON.parse(Buffer.from(b64, "base64").toString("utf8")) as {
+    project_id: string;
+  };
+  _gcsClient = new Storage({ projectId: creds.project_id, credentials: creds });
+  return _gcsClient;
+}
 
 function getBucketId(): string {
   const id = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
@@ -50,7 +42,7 @@ export async function uploadToGcs(
   contentType: string
 ): Promise<string> {
   const bucketId = getBucketId();
-  const bucket = gcsClient.bucket(bucketId);
+  const bucket = getGcsClient().bucket(bucketId);
   const file = bucket.file(objectName);
   await file.save(buffer, { contentType, resumable: false });
   return makeGcsPath(objectName);
@@ -58,7 +50,7 @@ export async function uploadToGcs(
 
 export async function downloadFromGcs(gcsPath: string): Promise<Buffer> {
   const { bucketId, objectName } = parseGcsPath(gcsPath);
-  const bucket = gcsClient.bucket(bucketId);
+  const bucket = getGcsClient().bucket(bucketId);
   const file = bucket.file(objectName);
   const [contents] = await file.download();
   return contents;
@@ -70,7 +62,7 @@ export async function streamFromGcs(
   contentType: string
 ): Promise<void> {
   const { bucketId, objectName } = parseGcsPath(gcsPath);
-  const bucket = gcsClient.bucket(bucketId);
+  const bucket = getGcsClient().bucket(bucketId);
   const file = bucket.file(objectName);
   res.set("Content-Type", contentType);
   res.set("Cache-Control", "private, max-age=300");

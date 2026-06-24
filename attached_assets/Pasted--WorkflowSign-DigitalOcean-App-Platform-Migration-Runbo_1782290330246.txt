@@ -1,0 +1,315 @@
+# WorkflowSign → DigitalOcean App Platform — Migration Runbook
+
+Derived from your migration audit, with DigitalOcean mechanics verified June 2026. Follow phases in order. Phases 1 (code fixes) must be committed **before** the GitHub push in Phase 2.
+
+---
+
+## Phase 0 — Decisions locked for this cutover
+
+| Decision | Choice | Why |
+|---|---|---|
+| Object storage | **Keep GCS**, swap auth only | Smallest possible change — only the credential block in `gcsStorage.ts` changes; all `gcs://` URIs stay valid. Migrate to DO Spaces *later* as an isolated step if you want one bill. Don't combine a storage rewrite with the platform move. |
+| App shape | **Single web service** (Node serves API **and** the built frontend) | Same origin (no CORS), one deploy, and Express can cleanly route both `/sign/*` → `sign.html` and `/*` → `index.html` — which a DO Static Site handles awkwardly given your two SPA entrypoints. |
+| Node 24 | **Dockerfile** | DO buildpacks top out below 24; Dockerfile pins Node 24 + pnpm 10.26.1 exactly. |
+| Region | **FRA1 (Frankfurt)** for both app and DB | Closest DO region to the West Bank / Amman, and it resolves the NYC3-vs-FRA1 mismatch — co-locate app + DB in one region. |
+
+> Spaces and a CDN-backed static frontend are both good follow-ups. Get it live on DO first, change one thing at a time.
+
+---
+
+## Phase 1 — Code fixes (commit before pushing)
+
+### 1.1 PostgreSQL SSL — the part that will bite hardest
+
+⚠️ Your audit suggested appending `?sslmode=require` to `DATABASE_URL`. That is **not** enough on DO and can actually *cause* the failure: DO's connection string already carries `sslmode=require`, and `pg` will override your `ssl` object with it, throwing `SELF_SIGNED_CERT_IN_CHAIN`. The reliable fix is to pass DO's CA certificate explicitly.
+
+When you attach a Managed PG database to the app (Phase 4), DO injects `DATABASE_URL` and a CA cert. Bind the cert to `DATABASE_CA_CERT` and read it:
+
+**`lib/db/src/index.ts`**
+```ts
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import * as schema from "./schema"; // adjust to your actual schema import
+
+const ca = process.env.DATABASE_CA_CERT;
+
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: ca
+    ? { rejectUnauthorized: true, ca }          // production (DO)
+    : { rejectUnauthorized: false },            // local/dev fallback
+});
+
+export const db = drizzle(pool, { schema });
+```
+
+**`artifacts/api-server/src/app.ts`** — the session store currently opens its *own* connection via `conString`, which bypasses the SSL config above and will fail on DO. Reuse the pool instead:
+```ts
+import { pool } from "@workspace/db"; // the SSL-configured pool from lib/db
+
+const sessionStore = new PgStore({
+  pool,                          // ← was: conString: databaseUrl
+  tableName: "user_sessions",
+  createTableIfMissing: true,
+  pruneSessionInterval: 60 * 60,
+});
+```
+
+**Fallback** if you *still* see `SELF_SIGNED_CERT_IN_CHAIN`: the URL's `sslmode` is winning. Either strip `sslmode` from `DATABASE_URL`, or connect with discrete params (`${db.HOSTNAME}`, `${db.PORT}`, `${db.USERNAME}`, `${db.PASSWORD}`, `${db.DATABASE}`) plus the same `ssl: { rejectUnauthorized: true, ca }` block.
+
+### 1.2 GCS auth — replace the Replit sidecar
+
+The sidecar at `127.0.0.1:1106` does not exist on DO. Create a GCP service account with Storage Object Admin on your bucket, download its JSON key, then base64-encode it (avoids newline mangling in env vars):
+
+```bash
+base64 -w0 service-account.json   # Linux
+base64 -i service-account.json    # macOS
+```
+
+Replace **only the client-init block** in `artifacts/api-server/src/lib/gcsStorage.ts` (leave `uploadToGcs()` and the rest unchanged):
+```ts
+import { Storage } from "@google-cloud/storage";
+
+function loadCredentials() {
+  const b64 = process.env.GCP_SA_KEY_B64;
+  if (!b64) throw new Error("GCP_SA_KEY_B64 is required.");
+  return JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
+}
+
+const credentials = loadCredentials();
+
+const gcsClient = new Storage({
+  projectId: credentials.project_id,
+  credentials,
+});
+```
+
+Set `DEFAULT_OBJECT_STORAGE_BUCKET_ID` (Phase 4) to your real GCS bucket name.
+
+### 1.3 Add the Dockerfile
+
+Place at repo root as `Dockerfile`. This is corrected from your audit draft — the prod stage must copy **built** artifacts with `--from=build` (the original copied un-built source from the build context), and the frontend output is under `dist/public`, not `public`:
+
+```dockerfile
+# syntax=docker/dockerfile:1
+FROM node:24-slim AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+WORKDIR /app
+
+# ── Build ──────────────────────────────────────────────
+FROM base AS build
+COPY . .
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @workspace/api-server run build
+RUN pnpm --filter @workspace/esign-app run build
+# Pruned, production-only deployable of the API (includes its built dist + prod deps)
+RUN pnpm --filter @workspace/api-server deploy --prod /prod/api
+
+# ── Production ─────────────────────────────────────────
+FROM base AS production
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=8080
+COPY --from=build /prod/api ./
+# Built frontend served as static files by the API (see 1.4)
+COPY --from=build /app/artifacts/esign-app/dist/public ./public
+EXPOSE 8080
+CMD ["node", "--enable-source-maps", "dist/index.mjs"]
+```
+
+> If `pnpm deploy` complains in pnpm 10, add `--legacy` to that line. Path note: this assumes the bundle lands at `/app/dist/index.mjs` and the server reads static files from `../public` relative to `dist/`. **See 1.4 — this is the one thing I need your files to finalize.**
+
+### 1.4 ⬅️ Confirm: does the API serve the frontend?
+
+The single-service shape assumes `app.ts` serves the `public/` directory with SPA fallbacks for `/sign/*` (→ `sign.html`) and `/*` (→ `index.html`). Your audit said the frontend "is not a Node process," so this middleware may **not** exist yet. If it doesn't, it's ~15 lines:
+
+```ts
+import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../public");
+
+app.use(express.static(publicDir));
+// Specific SPA entry for signing pages
+app.get("/sign/*", (_req, res) => res.sendFile(path.join(publicDir, "sign.html")));
+// Catch-all SPA entry (register AFTER all /api routes)
+app.get("*", (_req, res) => res.sendFile(path.join(publicDir, "index.html")));
+```
+
+**Send me `artifacts/api-server/src/app.ts` + `index.ts` + the two build scripts** and I'll hand back the exact Dockerfile paths + this middleware wired correctly. Until confirmed, treat 1.3/1.4 as provisional.
+
+### 1.5 Cleanup (non-blocking — safe to do now or after)
+- `documents.ts`: the `mkdirSync(uploadsDir)` block is harmless on DO but dead. Remove once you've confirmed every `documents.filepath` row starts with `gcs://` (run `SELECT count(*) FROM documents WHERE filepath NOT LIKE 'gcs://%';` — expect 0).
+- `appUrl.ts`: the `REPLIT_DOMAINS` branch becomes dead code once `APP_URL` is set. Remove for clarity.
+- `@replit/*` Vite plugins: already excluded from prod builds; drop from `devDependencies` to keep the tree clean.
+
+### 1.6 Add `.dockerignore` (repo root)
+```
+node_modules
+**/node_modules
+**/dist
+.git
+.replit
+replit.nix
+bucket-export
+*.log
+```
+
+---
+
+## Phase 2 — Push to GitHub
+
+```bash
+git checkout -b do-migration
+git add Dockerfile .dockerignore lib/ artifacts/
+git commit -m "Migrate to DigitalOcean: PG SSL via CA cert, GCS service-account auth, Dockerfile"
+git push origin do-migration
+```
+
+Open a PR and merge to `main` once reviewed (App Platform deploys from `main` by default). Your `.replit` / `replit.nix` files are inert on DO and can stay in the repo (the `.dockerignore` keeps them out of the image).
+
+---
+
+## Phase 3 — Provision the database
+
+1. DO console → **Create → Databases → PostgreSQL 16**, **region FRA1**, smallest plan to start.
+2. On the cluster's **Connection Details** page, note the **public** connection string and download the **CA certificate** — you'll need both for the Phase 5 schema migration from your laptop.
+3. **Trusted Sources**: after the app exists (Phase 4), add the app as a trusted source so only it (plus your IP for migrations) can connect. SSL is always enforced on DO managed DBs — you can't disable it, which is why Phase 1.1 matters.
+
+---
+
+## Phase 4 — Create the App
+
+**Console path:** Create → **Apps** → **GitHub** → select your WorkflowSign repo → branch `main` → **Autodeploy on**. App Platform auto-detects the `Dockerfile`.
+
+Then configure:
+1. **Resource type:** Web Service. **HTTP port: `8080`**.
+2. **Region:** FRA1 (match the DB).
+3. **Attach the database:** add the Phase 3 cluster to this app (or create a dev DB inline). This is what makes the `${db.*}` bindings resolve.
+4. **Environment variables** (mark secrets as encrypted):
+
+| Key | Value | Type |
+|---|---|---|
+| `NODE_ENV` | `production` | plain |
+| `PORT` | `8080` | plain |
+| `DATABASE_URL` | `${db.DATABASE_URL}` | secret |
+| `DATABASE_CA_CERT` | `${db.CA_CERT}` | plain |
+| `SESSION_SECRET` | (generate: `openssl rand -hex 32`) | secret |
+| `APP_URL` | `${APP_URL}` | plain |
+| `APP_ORIGIN` | `${APP_URL}` | plain |
+| `GCP_SA_KEY_B64` | (your base64 SA key) | secret |
+| `DEFAULT_OBJECT_STORAGE_BUCKET_ID` | your bucket name | plain |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | if using email | secret |
+| `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | if using SSO | secret |
+
+`${db.*}` and `${APP_URL}` are App Platform binding variables — they resolve at deploy time. Replace `db` with your DB component's actual name if different.
+
+### Declarative alternative — `.do/app.yaml`
+Commit this and deploy with `doctl apps create --spec .do/app.yaml` (then `doctl apps update <id> --spec ...` for changes). Reproducible and reviewable:
+
+```yaml
+name: workflowsign
+region: fra
+services:
+  - name: api
+    dockerfile_path: Dockerfile
+    github:
+      repo: ronihihi/eseungtur1   # adjust if different
+      branch: main
+      deploy_on_push: true
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs   # bump per load/budget
+    envs:
+      - { key: NODE_ENV, value: production }
+      - { key: PORT, value: "8080" }
+      - { key: DATABASE_URL, value: ${db.DATABASE_URL}, type: SECRET }
+      - { key: DATABASE_CA_CERT, value: ${db.CA_CERT} }
+      - { key: SESSION_SECRET, value: "", type: SECRET }        # set encrypted in dashboard
+      - { key: APP_URL, value: ${APP_URL} }
+      - { key: APP_ORIGIN, value: ${APP_URL} }
+      - { key: GCP_SA_KEY_B64, value: "", type: SECRET }        # paste base64 key
+      - { key: DEFAULT_OBJECT_STORAGE_BUCKET_ID, value: your-gcs-bucket }
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    production: true
+```
+
+---
+
+## Phase 5 — Create the schema in the new database
+
+Run Drizzle against the DO DB **from your laptop** using the public connection string + CA cert (add your IP to Trusted Sources first):
+
+```bash
+export DATABASE_URL='postgresql://doadmin:...@<host>:25060/defaultdb?sslmode=require'
+export DATABASE_CA_CERT="$(cat ca-certificate.crt)"
+# Fresh DB → push the schema directly:
+pnpm --filter @workspace/db exec drizzle-kit push
+# Or, if you maintain migration files:
+pnpm --filter @workspace/db exec drizzle-kit migrate
+```
+
+`user_sessions` will auto-create on first run (`createTableIfMissing: true`), but your app tables (documents, document_events, users, …) come from this step. Verify with `\dt` over `psql`.
+
+---
+
+## Phase 6 — Migrate existing data *(only if preserving production data)*
+
+Skip this entirely if you're starting fresh. If you want existing users + documents + the 83 PDFs to carry over:
+
+**6a. Database rows** — dump from Replit, restore to DO:
+```bash
+pg_dump --no-owner --no-privileges "$REPLIT_DATABASE_URL" -Fc -f workflowsign.dump
+pg_restore --no-owner --no-privileges \
+  -d "postgresql://doadmin:...@<host>:25060/defaultdb?sslmode=require" \
+  workflowsign.dump
+```
+Run this *after* Phase 5 if the dump is data-only, or *instead of* `drizzle-kit push` if the dump includes schema. Don't do both for the same tables.
+
+**6b. The 83 PDFs** — they're in `bucket-export/`. Upload to your new GCS bucket, preserving the object keys so the existing `gcs://bucket/key` rows still resolve:
+```bash
+gcloud auth activate-service-account --key-file=service-account.json
+gsutil -m cp -r bucket-export/* gs://your-gcs-bucket/
+```
+If the bucket name in the keys differs from the new bucket, update `documents.filepath` rows accordingly.
+
+---
+
+## Phase 7 — Deploy, smoke-test, finish
+
+1. Trigger the deploy (push to `main`, or `doctl apps create`). Watch **Build logs** then **Deploy logs** / **Runtime logs**.
+2. **Smoke test** at the app's URL:
+   - App boots (no `PORT` / `SESSION_SECRET` / `APP_ORIGIN` crash on startup — those three `process.exit(1)` if missing).
+   - Log in (exercises session store → confirms PG SSL is correct).
+   - Upload a PDF (exercises GCS service-account auth).
+   - Create a signing request and check the email link points at your DO domain (confirms `APP_URL`).
+   - Open a `/sign/...` link (confirms the SPA routing from 1.4).
+3. **Post-cutover cleanup** (the 1.5 items): remove the `uploads/` `mkdirSync`, the `REPLIT_DOMAINS` branch, and the `@replit/*` devDependencies. Commit.
+
+---
+
+## Blockers cross-check (from your audit)
+
+| Audit blocker | Resolved in |
+|---|---|
+| 🔴 GCS sidecar auth | 1.2 (service-account key) |
+| 🔴 PG SSL not enforced | 1.1 (CA cert + shared pool) — **corrected approach** |
+| 🔴 `APP_ORIGIN` unset → crash | Phase 4 env (`${APP_URL}`) |
+| 🔴 Node 24 needs Dockerfile | 1.3 |
+| ⚠️ 83 PDFs to transfer | 6b |
+| ⚠️ `APP_URL` for email links | Phase 4 env |
+| ⚠️ Legacy `uploads/` dir | 1.5 / Phase 7 |
+| ℹ️ `REPLIT_DOMAINS` dead code | 1.5 / Phase 7 |
+| ℹ️ `@replit/*` devDeps | 1.5 / Phase 7 |
+
+---
+
+### To finalize, I need two things from you
+1. **`app.ts` + `index.ts` + the two build scripts** → so I can lock down the Dockerfile copy paths and the static-serving middleware (1.3/1.4).
+2. **Fresh start, or preserve existing data?** → tells you whether Phase 6 applies.

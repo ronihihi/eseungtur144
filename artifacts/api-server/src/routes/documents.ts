@@ -12,10 +12,6 @@ import { uploadToGcs, downloadFromGcs, streamFromGcs, isGcsPath } from "../lib/g
 
 const router: IRouter = Router();
 
-// Keep a local uploads dir for backward-compat with old local-path documents
-const uploadsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../uploads");
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
 function requireAuth(req: Request, res: Response, next: () => void) {
   if (!req.session.userId) {
     req.resume();
