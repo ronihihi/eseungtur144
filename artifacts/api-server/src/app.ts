@@ -1,4 +1,3 @@
-```ts
 import express, { type Express } from "express";
 import cors from "cors";
 import session from "express-session";
@@ -257,4 +256,3 @@ app.use(
 );
 
 export default app;
-```
