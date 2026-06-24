@@ -24,3 +24,9 @@ id = "t6OG06U4Y8tB4qZEUkd0E"
 uri = "file://data.md"
 type = "text"
 title = "WorkflowSign — Infrastructure Reference"
+
+[[outputs]]
+id = "jiI2uKQWCDovVXRS36UMS"
+uri = "file://new.sql.tar.gz"
+type = "unspecified"
+title = "WorkflowSign — Production DB Export (new.sql)"
