@@ -13,7 +13,7 @@ RUN pnpm --filter @workspace/api-server run build
 RUN pnpm --filter @workspace/esign-app run build
 # Produce a lean, production-only copy of the API package with its
 # node_modules pre-pruned (no devDependencies, no other workspace packages).
-RUN pnpm --filter @workspace/api-server deploy --prod /prod/api
+RUN pnpm --filter @workspace/api-server deploy --prod --legacy /prod/api
 
 # ── Production ──────────────────────────────────────────────────────────────
 FROM node:24-slim AS production
