@@ -18,3 +18,9 @@ id = "K0Pfx5bSGS8-MeD7-5TWB"
 uri = "file://envermentsss.md"
 type = "text"
 title = "WorkflowSign — Environment Variables Reference"
+
+[[outputs]]
+id = "t6OG06U4Y8tB4qZEUkd0E"
+uri = "file://data.md"
+type = "text"
+title = "WorkflowSign — Infrastructure Reference"
