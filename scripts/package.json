@@ -10,5 +10,8 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "tsx": "catalog:"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^7.21.0"
   }
 }
