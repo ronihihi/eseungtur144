@@ -1,16 +1,29 @@
 import { Storage } from "@google-cloud/storage";
 import type { Response } from "express";
 
+const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
+
 let _gcsClient: Storage | null = null;
 
 function getGcsClient(): Storage {
   if (_gcsClient) return _gcsClient;
-  const b64 = process.env.GCP_SA_KEY_B64;
-  if (!b64) throw new Error("GCP_SA_KEY_B64 is not set — file storage is unavailable.");
-  const creds = JSON.parse(Buffer.from(b64, "base64").toString("utf8")) as {
-    project_id: string;
-  };
-  _gcsClient = new Storage({ projectId: creds.project_id, credentials: creds });
+  _gcsClient = new Storage({
+    credentials: {
+      audience: "replit",
+      subject_token_type: "access_token",
+      token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
+      type: "external_account",
+      credential_source: {
+        url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
+        format: {
+          type: "json",
+          subject_token_field_name: "access_token",
+        },
+      },
+      universe_domain: "googleapis.com",
+    },
+    projectId: "",
+  });
   return _gcsClient;
 }
 
@@ -61,11 +74,10 @@ export async function streamFromGcs(
   res: Response,
   contentType: string
 ): Promise<void> {
-  // Buffer first so mid-transfer storage errors surface as a proper status code
-  // rather than a truncated response after headers have already been sent.
+  const { bucketId, objectName } = parseGcsPath(gcsPath);
   const [buf] = await getGcsClient()
-    .bucket(parseGcsPath(gcsPath).bucketId)
-    .file(parseGcsPath(gcsPath).objectName)
+    .bucket(bucketId)
+    .file(objectName)
     .download();
   res.set("Content-Type", contentType);
   res.set("Content-Length", String(buf.byteLength));
