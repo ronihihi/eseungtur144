@@ -30,3 +30,9 @@ id = "jiI2uKQWCDovVXRS36UMS"
 uri = "file://new.sql.tar.gz"
 type = "unspecified"
 title = "WorkflowSign — Production DB Export (new.sql)"
+
+[[outputs]]
+id = "lsmvJ4oeSurhyFoZ2Aa_v"
+uri = "file://codeis.md"
+type = "text"
+title = "WorkflowSign — Full Source Code Export with Bug Review"
