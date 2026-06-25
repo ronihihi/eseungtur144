@@ -11,6 +11,13 @@ if (!process.env.DATABASE_URL) {
 }
 
 const ca = process.env.DATABASE_CA_CERT;
+const isProduction = process.env.NODE_ENV === "production";
+
+if (isProduction && !ca) {
+  throw new Error(
+    "DATABASE_CA_CERT must be set in production — refusing to start with unverified TLS.",
+  );
+}
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,

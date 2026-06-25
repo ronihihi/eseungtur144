@@ -61,15 +61,19 @@ export async function streamFromGcs(
   res: Response,
   contentType: string
 ): Promise<void> {
-  const { bucketId, objectName } = parseGcsPath(gcsPath);
-  const bucket = getGcsClient().bucket(bucketId);
-  const file = bucket.file(objectName);
+  // Buffer first so mid-transfer storage errors surface as a proper status code
+  // rather than a truncated response after headers have already been sent.
+  const [buf] = await getGcsClient()
+    .bucket(parseGcsPath(gcsPath).bucketId)
+    .file(parseGcsPath(gcsPath).objectName)
+    .download();
   res.set("Content-Type", contentType);
+  res.set("Content-Length", String(buf.byteLength));
   res.set("Cache-Control", "private, max-age=300");
-  return new Promise((resolve, reject) => {
-    const stream = file.createReadStream();
-    stream.on("error", reject);
-    stream.on("end", resolve);
-    stream.pipe(res);
-  });
+  res.send(buf);
+}
+
+export async function deleteFromGcs(gcsPath: string): Promise<void> {
+  const { bucketId, objectName } = parseGcsPath(gcsPath);
+  await getGcsClient().bucket(bucketId).file(objectName).delete({ ignoreNotFound: true });
 }

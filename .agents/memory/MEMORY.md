@@ -1,4 +1,5 @@
 - [Vite multi-page EISDIR fix](vite-multipage-eisdir.md) — removing rollupOptions.input and using a closeBundle plugin to generate sign.html avoids deployment EISDIR errors in Vite 7.
+- [Bootstrap admin token for production](bootstrap-admin-token.md) — BOOTSTRAP_ADMIN_TOKEN env var gates first-user admin on production; if unset (dev), first registrant becomes admin as before.
 - [api-server esbuild zod resolution](api-server-esbuild-deps.md) — zod (and any package) must be a direct dependency of api-server to be bundled; transitive deps through @workspace/* are not resolved by esbuild.
 - [Drizzle type rebuild needed](drizzle-type-rebuild.md) — after adding columns to lib/db schema, run `pnpm run typecheck:libs` before api-server typecheck sees the new fields.
 - [PdfViewer all props required](pdf-viewer-props.md) — PdfViewer needs currentPage, numPages, onLoadSuccess, onPageChange — all required; use local useState in any new page that embeds it.

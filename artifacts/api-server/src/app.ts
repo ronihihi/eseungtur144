@@ -172,14 +172,14 @@ app.use(
 
 app.use(
   express.json({
-    limit: "70mb",
+    limit: "1mb",
   }),
 );
 
 app.use(
   express.urlencoded({
     extended: true,
-    limit: "70mb",
+    limit: "1mb",
   }),
 );
 

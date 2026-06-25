@@ -4,11 +4,11 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { v4 as uuidv4 } from "uuid";
 import multer from "multer";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db, documentsTable, recipientsTable, signatureFieldsTable } from "@workspace/db";
 import type { Request, Response } from "express";
 import { buildSignedPdf, SignerRecord, ReviewerRecord, DocMeta } from "./pdfSigner.js";
-import { uploadToGcs, downloadFromGcs, streamFromGcs, isGcsPath } from "../lib/gcsStorage.js";
+import { uploadToGcs, downloadFromGcs, streamFromGcs, isGcsPath, deleteFromGcs } from "../lib/gcsStorage.js";
 
 const router: IRouter = Router();
 
@@ -40,16 +40,26 @@ router.get("/documents", requireAuth, async (req: Request, res: Response) => {
       .from(documentsTable)
       .where(eq(documentsTable.uploadedBy, req.session.userId!));
 
-    const result = await Promise.all(
-      docs.map(async (doc) => {
-        const recs = await db.select().from(recipientsTable).where(eq(recipientsTable.documentId, doc.id));
-        return {
-          ...doc,
-          totalRecipients: recs.length,
-          signedCount: recs.filter((r) => r.status === "signed").length,
-        };
-      })
-    );
+    // HARD-7: Single recipients query instead of N+1.
+    const docIds = docs.map((d) => d.id);
+    const allRecs = docIds.length
+      ? await db.select().from(recipientsTable).where(inArray(recipientsTable.documentId, docIds))
+      : [];
+    const byDoc = new Map<string, typeof allRecs>();
+    for (const r of allRecs) {
+      const list = byDoc.get(r.documentId) ?? [];
+      list.push(r);
+      byDoc.set(r.documentId, list);
+    }
+
+    const result = docs.map((doc) => {
+      const recs = byDoc.get(doc.id) ?? [];
+      return {
+        ...doc,
+        totalRecipients: recs.length,
+        signedCount: recs.filter((r) => r.status === "signed").length,
+      };
+    });
 
     result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     res.json({ documents: result });
@@ -81,6 +91,13 @@ router.post("/documents", requireAuth, multerUpload.single("file"), async (req: 
 
     const fileName = uploadedFile.originalname;
     const pdfBuffer: Buffer = uploadedFile.buffer;
+
+    // HARD-9: Verify magic bytes — multer checks extension, but a crafted upload
+    // could still be a non-PDF with a .pdf extension.
+    if (pdfBuffer.length < 5 || !pdfBuffer.subarray(0, 5).toString("latin1").startsWith("%PDF-")) {
+      res.status(400).json({ error: "File is not a valid PDF" });
+      return;
+    }
 
     // Upload to GCS
     const objectName = `documents/${uuidv4()}.pdf`;
@@ -217,6 +234,20 @@ router.put("/documents/:id/fields", requireAuth, async (req: Request, res: Respo
     if (!Array.isArray(fields)) {
       res.status(400).json({ error: "fields must be an array" });
       return;
+    }
+
+    // HARD-5: Validate fractional coordinates to prevent out-of-range values
+    // reaching the DB and being rendered off-screen.
+    const inRange01 = (n: unknown): n is number => typeof n === "number" && n >= 0 && n <= 1;
+    for (const f of fields) {
+      if (
+        !inRange01(f.x) || !inRange01(f.y) || !inRange01(f.width) || !inRange01(f.height) ||
+        f.x + f.width > 1.001 || f.y + f.height > 1.001 ||
+        !Number.isInteger(f.page) || f.page < 1
+      ) {
+        res.status(400).json({ error: "Invalid field geometry — coordinates must be in 0–1 fractional range" });
+        return;
+      }
     }
 
     await db.delete(signatureFieldsTable).where(eq(signatureFieldsTable.documentId, id));
@@ -376,6 +407,16 @@ router.delete("/documents/:id", requireAuth, async (req: Request, res: Response)
     await db.delete(signatureFieldsTable).where(eq(signatureFieldsTable.documentId, id));
     await db.delete(recipientsTable).where(eq(recipientsTable.documentId, id));
     await db.delete(documentsTable).where(eq(documentsTable.id, id));
+
+    // S-3: Delete GCS objects so orphaned files don't accumulate in storage.
+    const gcsDeletes: Promise<void>[] = [];
+    if (doc.filepath && isGcsPath(doc.filepath)) {
+      gcsDeletes.push(deleteFromGcs(doc.filepath));
+    }
+    if (doc.sealedPdfPath && isGcsPath(doc.sealedPdfPath)) {
+      gcsDeletes.push(deleteFromGcs(doc.sealedPdfPath));
+    }
+    await Promise.allSettled(gcsDeletes);
 
     res.json({ success: true });
   } catch (err) {

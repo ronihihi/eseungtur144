@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, and, count, ne } from "drizzle-orm";
 import { db, documentsTable, recipientsTable, signatureFieldsTable, documentEventsTable } from "@workspace/db";
 import fs from "fs";
 import path from "path";
@@ -141,15 +141,20 @@ async function maybeUnlockSigners(
     );
   }
 
-  const docStatus = doc.signingOrder === "simultaneous" && pendingSigners.length === 0
-    ? "completed"
-    : "sent";
-
-  if (reviewers.length > 0 && pendingSigners.length > 0) {
-    await db
-      .update(documentsTable)
-      .set({ status: docStatus })
-      .where(eq(documentsTable.id, documentId));
+  // BUG-3: If all reviewers approved but there are no signers, mark the document
+  // completed immediately (review-only workflow). Otherwise unlock pending signers.
+  if (reviewers.length > 0) {
+    if (pendingSigners.length === 0) {
+      await db
+        .update(documentsTable)
+        .set({ status: "completed", completedAt: new Date() })
+        .where(eq(documentsTable.id, documentId));
+    } else {
+      await db
+        .update(documentsTable)
+        .set({ status: "sent" })
+        .where(eq(documentsTable.id, documentId));
+    }
   }
 }
 
@@ -349,7 +354,9 @@ router.post("/sign/:token/review", signingRateLimit, async (req: Request, res: R
 
     // Allow changing a previous decision (e.g. approved → request_changes or vice-versa)
 
-    const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "";
+    // SEC-2: Use req.ip (set by Express trust proxy) rather than raw x-forwarded-for
+    // to prevent IP spoofing by a client injecting forged header values.
+    const ip = req.ip ?? req.socket.remoteAddress ?? "";
     const ua = req.headers["user-agent"] ?? null;
     const reviewStatus = decision === "approve" ? "approved" : "changes_requested";
 
@@ -414,6 +421,12 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
 
     const { fullName, signatureData, fieldValues } = parsed.data;
 
+    // HARD-4: Cap signature payload to prevent oversized writes.
+    if (signatureData && signatureData.length > 600_000) {
+      res.status(400).json({ error: "Signature data is too large" });
+      return;
+    }
+
     const recs = await db
       .select()
       .from(recipientsTable)
@@ -455,7 +468,8 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
       return;
     }
 
-    const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "";
+    // SEC-2: Use req.ip (set by Express trust proxy) rather than raw x-forwarded-for.
+    const ip = req.ip ?? req.socket.remoteAddress ?? "";
     const ua = req.headers["user-agent"] ?? null;
 
     await db
@@ -517,7 +531,19 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
       }
     }
 
-    if (signers.every((x) => x.status === "signed" || x.id === r.id)) {
+    // BUG-2: Re-count unsigned signers directly in DB so concurrent signers
+    // don't both read a stale snapshot and both miss the completion trigger.
+    const remaining = await db
+      .select({ n: count() })
+      .from(recipientsTable)
+      .where(
+        and(
+          eq(recipientsTable.documentId, r.documentId),
+          eq(recipientsTable.requiresSignature, true),
+          ne(recipientsTable.status, "signed"),
+        )
+      );
+    if (Number(remaining[0].n) === 0) {
       const now = new Date();
       await db
         .update(documentsTable)

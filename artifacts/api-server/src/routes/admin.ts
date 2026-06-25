@@ -1,24 +1,54 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import { db, usersTable, documentsTable, recipientsTable } from "@workspace/db";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
 
-function requireAdmin(req: Request, res: Response, next: () => void) {
-  if (!req.session.userId || req.session.userRole !== "admin") {
+// HARD-3: Re-read role from DB on each admin request so demotions apply immediately
+// without waiting for session expiry.
+async function requireAdmin(req: Request, res: Response, next: () => void) {
+  if (!req.session.userId) {
     res.status(403).json({ error: "Admin access required" });
+    return;
+  }
+  try {
+    const rows = await db
+      .select({ role: usersTable.role })
+      .from(usersTable)
+      .where(eq(usersTable.id, req.session.userId))
+      .limit(1);
+    if (!rows[0] || rows[0].role !== "admin") {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
     return;
   }
   next();
 }
 
-function requireAuditAccess(req: Request, res: Response, next: () => void) {
-  const role = req.session.userRole;
-  if (!req.session.userId || (role !== "admin" && role !== "auditor")) {
+async function requireAuditAccess(req: Request, res: Response, next: () => void) {
+  if (!req.session.userId) {
     res.status(403).json({ error: "Audit access required" });
+    return;
+  }
+  try {
+    const rows = await db
+      .select({ role: usersTable.role })
+      .from(usersTable)
+      .where(eq(usersTable.id, req.session.userId))
+      .limit(1);
+    const role = rows[0]?.role;
+    if (!role || (role !== "admin" && role !== "auditor")) {
+      res.status(403).json({ error: "Audit access required" });
+      return;
+    }
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
     return;
   }
   next();
@@ -145,22 +175,28 @@ async function buildAuditEvents(): Promise<AuditEvent[]> {
     .orderBy(desc(documentsTable.createdAt))
     .limit(500);
 
-  const recipients = await db
-    .select({
-      id: recipientsTable.id,
-      documentId: recipientsTable.documentId,
-      teamName: recipientsTable.teamName,
-      email: recipientsTable.email,
-      signerName: recipientsTable.signerName,
-      ipAddress: recipientsTable.ipAddress,
-      viewedAt: recipientsTable.viewedAt,
-      signedAt: recipientsTable.signedAt,
-      requiresReview: recipientsTable.requiresReview,
-      reviewStatus: recipientsTable.reviewStatus,
-      reviewedAt: recipientsTable.reviewedAt,
-      reviewNote: recipientsTable.reviewNote,
-    })
-    .from(recipientsTable);
+  // HARD-6: Scope recipients to documents already selected (max 500) — avoids a
+  // full-table scan that grows unboundedly with data.
+  const docIds = documents.map((d) => d.id);
+  const recipients = docIds.length
+    ? await db
+        .select({
+          id: recipientsTable.id,
+          documentId: recipientsTable.documentId,
+          teamName: recipientsTable.teamName,
+          email: recipientsTable.email,
+          signerName: recipientsTable.signerName,
+          ipAddress: recipientsTable.ipAddress,
+          viewedAt: recipientsTable.viewedAt,
+          signedAt: recipientsTable.signedAt,
+          requiresReview: recipientsTable.requiresReview,
+          reviewStatus: recipientsTable.reviewStatus,
+          reviewedAt: recipientsTable.reviewedAt,
+          reviewNote: recipientsTable.reviewNote,
+        })
+        .from(recipientsTable)
+        .where(inArray(recipientsTable.documentId, docIds))
+    : [];
 
   const docMap = new Map(documents.map(d => [d.id, d]));
 
@@ -287,7 +323,13 @@ router.get("/admin/audit/export", requireAuditAccess, async (req: Request, res: 
   try {
     const events = await buildAuditEvents();
 
-    const escape = (s: string | null | undefined) => `"${(s ?? "").replace(/"/g, '""')}"`;
+    // SEC-3: Prefix formula-injection characters with a single quote so Excel/Sheets
+    // won't execute them when an auditor opens the file.
+    const escape = (s: string | null | undefined) => {
+      let v = s ?? "";
+      if (/^[=+\-@\t\r]/.test(v)) v = "'" + v;
+      return `"${v.replace(/"/g, '""')}"`;
+    };
 
     const headers = ["Event Type", "Document Title", "Document ID", "Uploaded By", "Uploader Email", "Actor Name", "Actor Email", "IP Address", "Timestamp (UTC)", "Note"];
     const rows = events.map(e => [

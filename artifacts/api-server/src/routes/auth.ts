@@ -39,6 +39,16 @@ function parseJwt(token: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(payload, "base64url").toString("utf-8"));
 }
 
+// SEC-1: Rotate session ID before writing identity fields — prevents session fixation.
+function regenerateSession(req: Request): Promise<void> {
+  return new Promise((resolve, reject) =>
+    req.session.regenerate((err) => (err ? reject(err) : resolve()))
+  );
+}
+
+// SEC-7: Pre-computed dummy hash to equalise timing for unknown-email login paths.
+const DUMMY_HASH = "$2a$10$abcdefghijklmnopqrstuuJK3fWxKT3kpVGCUB2gTR6cVMl3Nh9O";
+
 router.post("/auth/register", authRateLimit, async (req: Request, res: Response) => {
   try {
     const parsed = RegisterBody.safeParse(req.body);
@@ -55,14 +65,23 @@ router.post("/auth/register", authRateLimit, async (req: Request, res: Response)
       return;
     }
 
-    // First user to register becomes admin
+    // SEC-6: First-user admin bootstrap — require BOOTSTRAP_ADMIN_TOKEN when set in env.
     const firstUser = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
-    const role = firstUser.length === 0 ? "admin" : "user";
+    let role = "user";
+    if (firstUser.length === 0) {
+      const bootstrapToken = process.env.BOOTSTRAP_ADMIN_TOKEN;
+      const provided = (req.body as { bootstrapToken?: string }).bootstrapToken;
+      if (!bootstrapToken || provided === bootstrapToken) {
+        role = "admin";
+      }
+    }
 
     const hashed = await bcrypt.hash(password, 10);
     const id = uuidv4();
     await db.insert(usersTable).values({ id, name, email, password: hashed, role, provider: "local", emailVerified: false });
 
+    // SEC-1: Rotate session ID before writing identity to prevent session fixation.
+    await regenerateSession(req);
     req.session.userId = id;
     req.session.userName = name;
     req.session.userEmail = email;
@@ -84,21 +103,17 @@ router.post("/auth/login", authRateLimit, async (req: Request, res: Response) =>
       res.status(400).json({ error: "Email and password are required" });
       return;
     }
-    const { email, password } = parsed.data;
+    // BUG-1: Normalise case — registration always lowercases; login must match.
+    const email = parsed.data.email.toLowerCase();
+    const { password } = parsed.data;
 
     const users = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
-    if (users.length === 0) {
-      res.status(401).json({ error: "Invalid email or password" });
-      return;
-    }
     const user = users[0];
 
-    if (user.provider !== "local") {
-      res.status(401).json({ error: "This account uses Microsoft sign-in. Please use the 'Sign in with Microsoft' button." });
-      return;
-    }
-
-    if (!user.password) {
+    // SEC-7: Run dummy bcrypt to equalise response time regardless of whether
+    // the account exists or uses a non-local provider.
+    if (!user || user.provider !== "local" || !user.password) {
+      await bcrypt.compare(password, DUMMY_HASH);
       res.status(401).json({ error: "Invalid email or password" });
       return;
     }
@@ -109,6 +124,8 @@ router.post("/auth/login", authRateLimit, async (req: Request, res: Response) =>
       return;
     }
 
+    // SEC-1: Rotate session ID before writing identity to prevent session fixation.
+    await regenerateSession(req);
     req.session.userId = user.id;
     req.session.userName = user.name;
     req.session.userEmail = user.email;
@@ -166,8 +183,9 @@ router.put("/auth/me/signature", async (req: Request, res: Response) => {
     return;
   }
   const { signatureData } = req.body as { signatureData?: string };
-  if (!signatureData) {
-    res.status(400).json({ error: "signatureData is required" });
+  // HARD-4: Cap stored signature size to prevent oversized DB rows.
+  if (!signatureData || signatureData.length > 300_000) {
+    res.status(400).json({ error: "signatureData is required and must be under ~200 KB" });
     return;
   }
   try {
@@ -263,6 +281,8 @@ router.get("/auth/azure/callback", async (req: Request, res: Response) => {
     }
 
     const user = users[0];
+    // SEC-1: Rotate session ID before writing identity to prevent session fixation.
+    await regenerateSession(req);
     req.session.userId = user.id;
     req.session.userName = user.name;
     req.session.userEmail = user.email;
