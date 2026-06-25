@@ -518,19 +518,6 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
       .from(recipientsTable)
       .where(eq(recipientsTable.documentId, r.documentId));
 
-    const signers = freshRecipients.filter((x) => x.requiresSignature);
-
-    if (doc?.signingOrder === "sequential") {
-      freshRecipients.sort((a, b) => a.signOrder - b.signOrder);
-      const next = freshRecipients.find(
-        (x) => x.requiresSignature && !x.requiresReview && x.signOrder === r.signOrder + 1 && x.status === "pending"
-      );
-      if (next) {
-        const baseUrl = getAppBaseUrl(req);
-        await sendSigningEmail(next, doc, `${baseUrl}/sign/${next.token}`, null, null, "E-Sign Workflow");
-      }
-    }
-
     // BUG-2: Re-count unsigned signers directly in DB so concurrent signers
     // don't both read a stale snapshot and both miss the completion trigger.
     const remaining = await db
@@ -543,8 +530,11 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
           ne(recipientsTable.status, "signed"),
         )
       );
-    if (Number(remaining[0].n) === 0) {
-      const now = new Date();
+
+    const allDone = Number(remaining[0].n) === 0;
+    const now = new Date();
+
+    if (allDone) {
       await db
         .update(documentsTable)
         .set({ status: "completed", completedAt: now })
@@ -556,8 +546,28 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
         actorName: "System",
         actorEmail: null,
       });
+    }
 
-      if (doc) {
+    // Respond immediately — background tasks (email + PDF sealing) must not
+    // block the signer's browser.
+    res.json({ success: true });
+
+    // ── Background: send next-signer email (sequential workflow) ─────────
+    if (doc?.signingOrder === "sequential") {
+      const sorted = [...freshRecipients].sort((a, b) => a.signOrder - b.signOrder);
+      const next = sorted.find(
+        (x) => x.requiresSignature && !x.requiresReview && x.signOrder === r.signOrder + 1 && x.status === "pending"
+      );
+      if (next) {
+        const baseUrl = getAppBaseUrl(req);
+        sendSigningEmail(next, doc, `${baseUrl}/sign/${next.token}`, null, null, "E-Sign Workflow")
+          .catch((err) => req.log.error({ err }, "failed to send next signing email"));
+      }
+    }
+
+    // ── Background: seal the completed PDF (GCS download + pdf-lib + upload) ──
+    if (allDone && doc) {
+      setImmediate(async () => {
         try {
           const allFields = await db
             .select()
@@ -619,10 +629,8 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
         } catch (sealErr) {
           req.log.error({ sealErr }, "non-fatal: failed to seal PDF after completion");
         }
-      }
+      });
     }
-
-    res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "submit signature error");
     res.status(500).json({ error: "Internal server error" });
