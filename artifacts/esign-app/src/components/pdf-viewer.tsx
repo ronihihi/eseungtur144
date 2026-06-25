@@ -39,23 +39,41 @@ export function PdfViewer({
   const [pageWidth, setPageWidth] = useState(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // ResizeObserver keeps pageWidth in sync whenever the container resizes
-  // (e.g. sidebar loads after mount, window resize, layout shift)
+  // ResizeObserver keeps pageWidth in sync whenever the container resizes.
+  // Guards: debounce (150 ms) + 3 px threshold stop the scrollbar-driven
+  // feedback loop where PDF renders tall → scrollbar steals ~15 px → PDF
+  // shrinks → scrollbar disappears → PDF grows → repeat (zoom in/out flash).
   useEffect(() => {
     const node = wrapperRef.current;
     if (!node) return;
 
-    const update = (w: number) =>
-      setPageWidth(Math.min(Math.floor(w), MAX_PAGE_WIDTH));
+    let last = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
-    update(node.offsetWidth);
+    const apply = (w: number) => {
+      const next = Math.min(Math.round(w), MAX_PAGE_WIDTH);
+      if (Math.abs(next - last) > 3) {
+        last = next;
+        setPageWidth(next);
+      }
+    };
+
+    // Measure immediately (no debounce needed on first paint)
+    last = Math.min(Math.round(node.offsetWidth), MAX_PAGE_WIDTH);
+    setPageWidth(last);
 
     const ro = new ResizeObserver((entries) => {
       const entry = entries[0];
-      if (entry) update(entry.contentRect.width);
+      if (!entry) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => apply(entry.contentRect.width), 150);
     });
     ro.observe(node);
-    return () => ro.disconnect();
+
+    return () => {
+      ro.disconnect();
+      clearTimeout(timer);
+    };
   }, []);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
