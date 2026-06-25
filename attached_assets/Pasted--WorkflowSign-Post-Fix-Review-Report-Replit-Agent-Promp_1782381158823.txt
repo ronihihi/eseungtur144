@@ -1,0 +1,76 @@
+# WorkflowSign — Post-Fix Review & Report (Replit Agent Prompt, READ-ONLY)
+
+> **How to use:** paste everything below the line into the Replit agent. Run this *after* the recommended fixes have been applied. The agent only reviews and writes a report — it must not change the app.
+
+---
+
+You are a senior security engineer doing a **read-only audit** of **WorkflowSign** (Node.js + Express + TypeScript, React/Vite frontend, Drizzle ORM on PostgreSQL, object storage for PDFs, Azure SSO + local auth, nodemailer). A set of security and bug fixes was recently applied. Your job is to **verify the codebase, confirm the fixes are correctly in place, check for any errors, and find anything still broken or newly broken — then write a report.**
+
+## Hard rule
+
+**Do not modify, create, or delete any application code. No edits, no commits, no branches, no dependency changes, no auto-formatting.** The only file you may write is `REVIEW-REPORT.md` at the repo root. If you believe a change is needed, describe it in the report — do not make it.
+
+## What to do
+
+1. **Verify the prior fixes.** For each item in the checklist below, find the relevant code and decide its status: ✅ Fixed · ⚠️ Partial · ❌ Not done · 🔁 Regressed (newly broken). Record the exact `file:line` as evidence. If `WorkflowSign-Security-Remediation.md` is in the repo, use it as the spec for what each fix should look like.
+
+2. **Check for errors.** Run and capture the output of each (use whatever the repo defines in `package.json`):
+   - typecheck — `tsc --noEmit` (or the project's typecheck script)
+   - production build — the build script for backend and frontend
+   - lint — the lint script, if present
+   - tests — the test script, if present
+   - boot — start the app/dev server and note any startup/runtime errors (stop it after it boots)
+   Report every error and meaningful warning verbatim, with the file it points to.
+
+3. **Grep for regressions / dangerous patterns** and report any hits:
+   - `rejectUnauthorized: false`, `NODE_TLS_REJECT_UNAUTHORIZED`
+   - `x-forwarded-for` used directly for a stored IP (should be `req.ip`)
+   - raw template interpolation of user input in email HTML
+   - any `/documents/:id*` route missing the `uploadedBy = session.userId` scope
+   - secrets or tokens hardcoded in source
+
+4. **Fresh sweep.** Independently look for any remaining or new bugs, security issues, or logic errors anywhere in the app — including the spots that may not have been fully reviewed before: the public **`/sign/:token/file`** download route, the **PDF signer** internals, and the **frontend pages**.
+
+## Checklist — confirm each is in place
+
+Severity: **P0** security · **P1** bug/hardening · **P2** cleanup.
+
+| ID | Confirm this is in place |
+|----|--------------------------|
+| SEC-1 (P0) | `req.session.regenerate()` is called before setting `userId` in login, register, and the Azure callback |
+| SEC-2 (P0) | `POST /sign/:token` and `POST /sign/:token/review` record the IP from `req.ip`, not the raw `x-forwarded-for` header |
+| SEC-3 (P0) | The audit-CSV escape function neutralizes values starting with `= + - @`, tab, or CR |
+| SEC-4 (P0) | DB SSL uses `rejectUnauthorized: true` + `ca`; production throws if `DATABASE_CA_CERT` is missing; `NODE_TLS_REJECT_UNAUTHORIZED=0` appears nowhere |
+| SEC-5 (P0) | Email templates HTML-escape `message`, document title, sender name, and approver names |
+| SEC-6 (P0) | Admin role is **not** auto-granted from an empty users table; bootstrap is gated (token or disabled self-registration) |
+| SEC-7 (P0) | Login runs a dummy bcrypt compare for unknown users and returns one generic error; no "uses Microsoft sign-in" existence leak |
+| BUG-1 (P1) | Login lowercases the email before the lookup (matching registration) |
+| BUG-2 (P1) | Completion is decided from a transactional DB count, not an in-memory recipient snapshot |
+| BUG-3 (P1) | Review-only documents (reviewers, no signers) reach `completed` |
+| HARD-1 (P1) | Global JSON/urlencoded limit is small (~1 MB); a larger limit applies only on signature-image routes |
+| HARD-2 (P1) | The error-handling middleware is the last `app.use`, after the SPA catch-all |
+| HARD-3 (P1) | Admin/auditor guards re-read the role from the DB (or sessions are invalidated on role change) |
+| HARD-4 (P1) | Stored signature image data has a size cap (~200 KB) |
+| HARD-5 (P1) | Field coordinates are validated to `[0,1]` and fit the page; page is a positive integer |
+| HARD-6 (P1) | The audit query is scoped (`WHERE`/limit), and audit endpoints paginate |
+| HARD-7 (P1) | `GET /documents` fetches recipients in a single query (no N+1) |
+| HARD-8 (P1) | The email transporter is created lazily and is inert when SMTP is unconfigured |
+| HARD-9 (P1) | Uploads validate the `%PDF-` magic bytes, not just the file extension |
+| HARD-10 (P1) | `GET /sign/:token` returns only the fields the UI needs; `allSignedFields` is gated |
+| S-1/2/3 (P1) | Storage: small PDFs are buffered before send; object existence is really checked (or read errors → 404); stored + sealed objects are deleted on document delete |
+| CLN-1 (P2) | The Review page uses the generated API hooks, not raw `fetch()` |
+| CLN-2 (P2) | A real `sentAt` value drives the "sent" audit event |
+| CLN-3 (P2) | Docs no longer claim removed DOCX support |
+
+## Deliverable — `REVIEW-REPORT.md`
+
+Write the report at the repo root with:
+
+1. **Verdict** — one line: is the app clean / are there remaining blockers, and how many of each severity remain.
+2. **Prior-fix status** — the table above with a Status column (✅/⚠️/❌/🔁), Evidence (`file:line`), and a short note per row.
+3. **New or remaining findings** — anything not in the checklist, each with severity, `file:line`, and a one-line description.
+4. **Errors** — the typecheck / build / lint / test / boot results, with every error and meaningful warning quoted and attributed to a file.
+5. **Still needs attention** — a short prioritized list (P0 first) of what to do next.
+6. **Confirmation** — state explicitly that no application code was changed and only `REVIEW-REPORT.md` was written.
+
+Do not mark the task complete until `REVIEW-REPORT.md` exists and you have confirmed no other file was modified.
