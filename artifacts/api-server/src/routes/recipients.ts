@@ -129,6 +129,15 @@ router.post("/documents/:id/send", requireAuth, async (req: Request, res: Respon
 
     const baseUrl = getAppBaseUrl(req);
 
+    // Persist the custom email subject/message so later emails (e.g. sign-unlock
+    // after review approval) can still carry the sender's original message.
+    const storedSubject = subject?.trim() || null;
+    const storedMessage = message?.trim() || null;
+    await db
+      .update(documentsTable)
+      .set({ emailSubject: storedSubject, emailMessage: storedMessage })
+      .where(eq(documentsTable.id, id));
+
     const reviewers = allRecipients.filter((r) => r.requiresReview);
     const signers = allRecipients.filter((r) => r.requiresSignature && !r.requiresReview);
 
@@ -137,14 +146,14 @@ router.post("/documents/:id/send", requireAuth, async (req: Request, res: Respon
     if (reviewers.length > 0) {
       const toSendReviewers = doc.signingOrder === "sequential" ? [reviewers[0]] : reviewers;
       for (const r of toSendReviewers) {
-        await sendReviewInviteEmail(r, doc, `${baseUrl}/review/${r.token}`, req.session.userName);
+        await sendReviewInviteEmail(r, doc, `${baseUrl}/review/${r.token}`, req.session.userName, storedSubject, storedMessage);
         sent++;
       }
       await db.update(documentsTable).set({ status: "in_review" as string }).where(eq(documentsTable.id, id));
     } else {
       const toSend = doc.signingOrder === "sequential" ? [signers[0] ?? allRecipients[0]] : allRecipients;
       for (const r of toSend) {
-        await sendSigningEmail(r, doc, `${baseUrl}/sign/${r.token}`, subject, message, req.session.userName);
+        await sendSigningEmail(r, doc, `${baseUrl}/sign/${r.token}`, storedSubject, storedMessage, req.session.userName);
         sent++;
       }
       await db.update(documentsTable).set({ status: "sent" }).where(eq(documentsTable.id, id));

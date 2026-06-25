@@ -111,9 +111,22 @@ const developmentOrigins = [
   "http://localhost:80",
 ];
 
+// Replit preview domains — auto-detected from REPLIT_DOMAINS / REPLIT_DEV_DOMAIN.
+// These are only added in development so they never affect the production allow-list.
+const replitOrigins = [
+  ...(process.env.REPLIT_DOMAINS ?? "")
+    .split(",")
+    .map((d) => d.trim())
+    .filter(Boolean)
+    .map((d) => `https://${d}`),
+  ...(process.env.REPLIT_DEV_DOMAIN
+    ? [`https://${process.env.REPLIT_DEV_DOMAIN}`]
+    : []),
+].filter((v, i, a) => a.indexOf(v) === i); // dedupe
+
 const allowedOrigins = isProduction
   ? configuredOrigins
-  : [...configuredOrigins, ...developmentOrigins];
+  : [...configuredOrigins, ...developmentOrigins, ...replitOrigins];
 
 if (isProduction && allowedOrigins.length === 0) {
   logger.error(

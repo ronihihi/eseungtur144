@@ -15,6 +15,8 @@ export const documentsTable = pgTable("documents", {
   completedAt: timestamp("completed_at"),
   sealedPdfPath: text("sealed_pdf_path"),
   sealedPdfHash: text("sealed_pdf_hash"),
+  emailSubject: text("email_subject"),
+  emailMessage: text("email_message"),
 });
 
 export const insertDocumentSchema = createInsertSchema(documentsTable).omit({

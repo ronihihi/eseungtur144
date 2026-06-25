@@ -107,7 +107,7 @@ function computeNextStep(
 async function maybeUnlockSigners(
   documentId: string,
   baseUrl: string,
-  doc: { title: string; filename: string; signingOrder: string },
+  doc: { title: string; filename: string; signingOrder: string; emailSubject?: string | null; emailMessage?: string | null },
   triggeredByName: string | null
 ) {
   const allRecipients = await db
@@ -136,7 +136,8 @@ async function maybeUnlockSigners(
       signer,
       doc,
       `${baseUrl}/sign/${signer.token}`,
-      approvedReviewerNames
+      approvedReviewerNames,
+      doc.emailMessage ?? null
     );
   }
 
