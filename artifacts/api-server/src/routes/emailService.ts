@@ -111,6 +111,36 @@ export async function sendReviewInviteEmail(
   });
 }
 
+export async function sendPasswordResetEmail(
+  name: string,
+  email: string,
+  resetUrl: string
+): Promise<void> {
+  const t = getTransporter();
+  if (!t) {
+    logger.warn({ email, resetUrl }, "SMTP not configured — skipping password reset email");
+    return;
+  }
+
+  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333">
+    <div style="background:#f8f9fa;border-radius:8px;padding:30px;margin-bottom:20px">
+      <h2 style="color:#1a1a2e;margin-top:0">Reset your password</h2>
+      <p style="color:#555;line-height:1.6">Hi ${esc(name)},</p>
+      <p style="color:#555;line-height:1.6">We received a request to reset your password. Click the button below to choose a new one. This link expires in <strong>1 hour</strong>.</p>
+      <a href="${resetUrl}" style="display:inline-block;background:#1a1a2e;color:white;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:16px;margin-top:10px">Reset Password &rarr;</a>
+      <p style="color:#888;font-size:13px;margin-top:24px">If you did not request a password reset, you can safely ignore this email — your password will not change.</p>
+    </div>
+    <p style="font-size:12px;color:#999;text-align:center">WorkflowSign &mdash; SOS Children's Villages Palestine</p>
+    </body></html>`;
+
+  await t.sendMail({
+    from: `"E-Sign Workflow" <${process.env.SMTP_USER}>`,
+    to: `${name} <${email}>`,
+    subject: "Reset your WorkflowSign password",
+    html,
+  });
+}
+
 export async function sendSignUnlockEmail(
   recipient: { teamName: string; email: string },
   doc: { title: string },

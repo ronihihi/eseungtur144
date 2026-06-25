@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
-import { useLocation, useSearch } from "wouter";
+import { useEffect } from "react";
+import { useLocation, useSearch, Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useLogin, useRegister, useGetAzureEnabled, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useLogin, useGetAzureEnabled, getGetMeQueryKey } from "@workspace/api-client-react";
 import type { MeResponse } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -15,12 +15,6 @@ import { FileSignature, ShieldCheck, Zap, Users } from "lucide-react";
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email"),
   password: z.string().min(1, "Password is required"),
-});
-
-const registerSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  email: z.string().email("Please enter a valid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
 function MicrosoftIcon() {
@@ -49,10 +43,8 @@ export function AuthPage() {
   const urlError = params.get("error");
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [isLogin, setIsLogin] = useState(true);
 
   const loginMutation = useLogin();
-  const registerMutation = useRegister();
   const { data: azureConfig } = useGetAzureEnabled();
 
   useEffect(() => {
@@ -77,11 +69,6 @@ export function AuthPage() {
     defaultValues: { email: "", password: "" },
   });
 
-  const registerForm = useForm<z.infer<typeof registerSchema>>({
-    resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", email: "", password: "" },
-  });
-
   const onLoginSubmit = (values: z.infer<typeof loginSchema>) => {
     loginMutation.mutate(
       { data: values },
@@ -95,25 +82,6 @@ export function AuthPage() {
             variant: "destructive",
             title: "Login failed",
             description: (err as { error?: string })?.error || "Please check your credentials and try again.",
-          });
-        },
-      }
-    );
-  };
-
-  const onRegisterSubmit = (values: z.infer<typeof registerSchema>) => {
-    registerMutation.mutate(
-      { data: values },
-      {
-        onSuccess: (data) => {
-          queryClient.setQueryData<MeResponse>(getGetMeQueryKey(), { user: data.user });
-          setLocation(redirectTo);
-        },
-        onError: (err: unknown) => {
-          toast({
-            variant: "destructive",
-            title: "Registration failed",
-            description: (err as { error?: string })?.error || "An error occurred during registration.",
           });
         },
       }
@@ -176,12 +144,8 @@ export function AuthPage() {
           </div>
 
           <div className="space-y-1">
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">
-              {isLogin ? "Welcome back" : "Create an account"}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {isLogin ? "Sign in to continue to your workspace" : "Enter your details to get started"}
-            </p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Welcome back</h2>
+            <p className="text-sm text-muted-foreground">Sign in to continue to your workspace</p>
           </div>
 
           <div className="space-y-4">
@@ -189,7 +153,7 @@ export function AuthPage() {
               <>
                 <Button type="button" variant="outline" className="w-full h-10" onClick={handleMicrosoftSignIn}>
                   <MicrosoftIcon />
-                  {isLogin ? "Sign in with Microsoft" : "Sign up with Microsoft"}
+                  Sign in with Microsoft
                 </Button>
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
@@ -202,100 +166,48 @@ export function AuthPage() {
               </>
             )}
 
-            {isLogin ? (
-              <Form {...loginForm} key="login">
-                <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
-                  <FormField
-                    control={loginForm.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input placeholder="name@example.com" type="email" autoComplete="email" className="h-10" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={loginForm.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
+            <Form {...loginForm}>
+              <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
+                <FormField
+                  control={loginForm.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input placeholder="name@example.com" type="email" autoComplete="email" className="h-10" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={loginForm.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className="flex items-center justify-between">
                         <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <Input type="password" autoComplete="current-password" className="h-10" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button type="submit" className="w-full h-10" disabled={loginMutation.isPending}>
-                    {loginMutation.isPending ? "Signing in…" : "Sign in"}
-                  </Button>
-                </form>
-              </Form>
-            ) : (
-              <Form {...registerForm} key="register">
-                <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-4">
-                  <FormField
-                    control={registerForm.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Full name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Jane Smith" autoComplete="name" className="h-10" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={registerForm.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input placeholder="name@example.com" type="email" autoComplete="email" className="h-10" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={registerForm.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <Input type="password" autoComplete="new-password" className="h-10" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button type="submit" className="w-full h-10" disabled={registerMutation.isPending}>
-                    {registerMutation.isPending ? "Creating account…" : "Create account"}
-                  </Button>
-                </form>
-              </Form>
-            )}
+                        <Link
+                          href="/forgot-password"
+                          className="text-xs text-muted-foreground hover:text-primary hover:underline"
+                        >
+                          Forgot password?
+                        </Link>
+                      </div>
+                      <FormControl>
+                        <Input type="password" autoComplete="current-password" className="h-10" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" className="w-full h-10" disabled={loginMutation.isPending}>
+                  {loginMutation.isPending ? "Signing in…" : "Sign in"}
+                </Button>
+              </form>
+            </Form>
           </div>
-
-          <p className="text-center text-sm text-muted-foreground">
-            {isLogin ? "Don't have an account? " : "Already have an account? "}
-            <button
-              type="button"
-              onClick={() => setIsLogin(!isLogin)}
-              className="font-semibold text-primary hover:underline focus:outline-none"
-            >
-              {isLogin ? "Sign up" : "Sign in"}
-            </button>
-          </p>
         </div>
       </div>
     </div>

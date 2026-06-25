@@ -1,11 +1,14 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
+import { randomBytes } from "crypto";
 import { eq } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, passwordResetTokensTable } from "@workspace/db";
 import { RegisterBody, LoginBody } from "@workspace/api-zod";
 import type { Request, Response } from "express";
 import { authRateLimit } from "../lib/rateLimiters.js";
+import { getAppBaseUrl } from "../lib/appUrl.js";
+import { sendPasswordResetEmail } from "./emailService.js";
 
 const router: IRouter = Router();
 
@@ -294,6 +297,74 @@ router.get("/auth/azure/callback", async (req: Request, res: Response) => {
   } catch (err) {
     req.log.error({ err }, "azure callback error");
     res.redirect("/auth?error=azure_failed");
+  }
+});
+
+// ── Forgot password ───────────────────────────────────────────────────────────
+
+router.post("/auth/forgot-password", authRateLimit, async (req: Request, res: Response) => {
+  const { email } = req.body as { email?: string };
+  const normalizedEmail = (email ?? "").toLowerCase().trim();
+
+  // Always return 200 — never reveal whether the email exists.
+  res.json({ success: true });
+
+  if (!normalizedEmail) return;
+  try {
+    const users = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
+    const user = users[0];
+    if (!user || user.provider !== "local") return;
+
+    // Invalidate any existing tokens for this user before creating a new one.
+    await db.delete(passwordResetTokensTable).where(eq(passwordResetTokensTable.userId, user.id));
+
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await db.insert(passwordResetTokensTable).values({
+      id: uuidv4(),
+      userId: user.id,
+      token,
+      expiresAt,
+    });
+
+    const baseUrl = getAppBaseUrl(req);
+    await sendPasswordResetEmail(user.name, user.email, `${baseUrl}/reset-password?token=${token}`);
+  } catch (err) {
+    req.log.error({ err }, "forgot password error (silent)");
+  }
+});
+
+// ── Reset password ────────────────────────────────────────────────────────────
+
+router.post("/auth/reset-password", authRateLimit, async (req: Request, res: Response) => {
+  const { token, password } = req.body as { token?: string; password?: string };
+
+  if (!token || !password || password.length < 6) {
+    res.status(400).json({ error: "A valid token and a password of at least 6 characters are required" });
+    return;
+  }
+
+  try {
+    const rows = await db
+      .select()
+      .from(passwordResetTokensTable)
+      .where(eq(passwordResetTokensTable.token, token))
+      .limit(1);
+
+    const resetRow = rows[0];
+    if (!resetRow || resetRow.usedAt || resetRow.expiresAt < new Date()) {
+      res.status(400).json({ error: "This reset link is invalid or has expired. Please request a new one." });
+      return;
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+    await db.update(usersTable).set({ password: hashed }).where(eq(usersTable.id, resetRow.userId));
+    await db.update(passwordResetTokensTable).set({ usedAt: new Date() }).where(eq(passwordResetTokensTable.id, resetRow.id));
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "reset password error");
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

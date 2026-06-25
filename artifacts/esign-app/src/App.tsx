@@ -11,6 +11,8 @@ import { Layout } from "@/components/layout";
 import { AuthPage } from "@/pages/auth";
 import { SignPage } from "@/pages/sign";
 import { ReviewPage } from "@/pages/review";
+import { ForgotPasswordPage } from "@/pages/forgot-password";
+import { ResetPasswordPage } from "@/pages/reset-password";
 
 const DashboardPage = lazy(() => import("@/pages/dashboard").then((m) => ({ default: m.DashboardPage })));
 const UploadPage = lazy(() => import("@/pages/upload").then((m) => ({ default: m.UploadPage })));
@@ -108,6 +110,8 @@ function Router() {
     <Suspense fallback={<LoadingScreen />}>
       <Switch>
         <Route path="/auth" component={AuthPage} />
+        <Route path="/forgot-password" component={ForgotPasswordPage} />
+        <Route path="/reset-password" component={ResetPasswordPage} />
         <Route path="/sign/:token" component={SignPage} />
         <Route path="/review/:token" component={ReviewPage} />
         <Route path="/">
