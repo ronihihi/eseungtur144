@@ -697,10 +697,12 @@ router.get("/sign/:token/download", signingRateLimit, async (req: Request, res: 
 
     const source = isGcsPath(doc.filepath) ? await getFileBuffer(doc.filepath) : doc.filepath;
     const pdfBytes = await buildSignedPdf(source, entries, { doc: docMeta, signers: signerRecords, reviewers: reviewerRecords });
+    const pdfBuf = Buffer.from(pdfBytes);
     const safeName = doc.filename.replace(/[^a-z0-9.\-_]/gi, "_");
     res.set("Content-Type", "application/pdf");
     res.set("Content-Disposition", `attachment; filename="${safeName}"`);
-    res.send(Buffer.from(pdfBytes));
+    res.set("Content-Length", String(pdfBuf.byteLength));
+    res.send(pdfBuf);
   } catch (err) {
     req.log.error({ err }, "download signed pdf error");
     res.status(500).json({ error: "Failed to generate signed PDF" });

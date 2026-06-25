@@ -258,6 +258,23 @@ router.get("/documents/:id/download", requireAuth, async (req: Request, res: Res
       return;
     }
 
+    const safeName = doc.filename.replace(/[^a-z0-9.\-_]/gi, "_");
+
+    // Fast path: use the pre-sealed PDF already stored in GCS when available.
+    // This is set once all signers have completed, so it always has every signature.
+    if (doc.sealedPdfPath) {
+      try {
+        const sealedBuf = await downloadFromGcs(doc.sealedPdfPath);
+        res.set("Content-Type", "application/pdf");
+        res.set("Content-Disposition", `attachment; filename="${safeName}"`);
+        res.set("Content-Length", String(sealedBuf.byteLength));
+        res.send(sealedBuf);
+        return;
+      } catch {
+        req.log.warn("sealed PDF not found in GCS, falling back to on-demand generation");
+      }
+    }
+
     // Run all three DB queries + GCS download in parallel
     const [recipients, allFields, fileSource] = await Promise.all([
       db.select().from(recipientsTable).where(eq(recipientsTable.documentId, id)),
@@ -325,11 +342,11 @@ router.get("/documents/:id/download", requireAuth, async (req: Request, res: Res
       signers: signerRecords,
       reviewers: reviewerRecords,
     });
-    const safeName = doc.filename.replace(/[^a-z0-9.\-_]/gi, "_");
+    const pdfBuf = Buffer.from(pdfBytes);
     res.set("Content-Type", "application/pdf");
     res.set("Content-Disposition", `attachment; filename="${safeName}"`);
-    res.set("Content-Length", String(pdfBytes.byteLength));
-    res.send(Buffer.from(pdfBytes));
+    res.set("Content-Length", String(pdfBuf.byteLength));
+    res.send(pdfBuf);
   } catch (err) {
     req.log.error({ err }, "download signed pdf error");
     res.status(500).json({ error: "Failed to generate signed PDF" });
