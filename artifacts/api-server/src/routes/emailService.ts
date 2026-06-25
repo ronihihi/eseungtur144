@@ -50,10 +50,18 @@ export async function sendSigningEmail(
     return;
   }
 
+  const personalNoteHtml = message?.trim()
+    ? `<div style="background:#fffbf0;border-left:4px solid #f5a623;border-radius:0 6px 6px 0;padding:14px 16px;margin:20px 0">
+        <p style="margin:0 0 4px;font-size:11px;color:#999;font-weight:bold;text-transform:uppercase;letter-spacing:0.07em">Note from ${esc(senderName) || "the sender"}:</p>
+        <p style="margin:0;color:#333;line-height:1.6;white-space:pre-wrap">${esc(message.trim())}</p>
+      </div>`
+    : "";
+
   const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333">
     <div style="background:#f8f9fa;border-radius:8px;padding:30px;margin-bottom:20px">
       <h2 style="color:#1a1a2e;margin-top:0">Document Signature Required</h2>
-      <p style="color:#555;line-height:1.6">${esc(message) || "Please review and sign the document below."}</p>
+      <p style="color:#555;line-height:1.6">You've been asked to review and sign the document below.</p>
+      ${personalNoteHtml}
       <div style="background:white;border:1px solid #e0e0e0;border-radius:6px;padding:16px;margin:20px 0">
         <p style="margin:0;font-size:14px;color:#888">Document</p>
         <p style="margin:4px 0 0;font-weight:bold;font-size:16px">${esc(doc.title)}</p>
@@ -85,15 +93,19 @@ export async function sendReviewInviteEmail(
     return;
   }
 
-  const messageHtml = customMessage
-    ? `<p style="color:#555;line-height:1.6">${esc(customMessage)}</p>`
-    : `<p style="color:#555;line-height:1.6">You have been asked to review the following document before it is sent for signatures. Please examine it carefully and either approve it or request changes.</p>`;
+  const reviewNoteHtml = customMessage?.trim()
+    ? `<div style="background:#fffbf0;border-left:4px solid #f5a623;border-radius:0 6px 6px 0;padding:14px 16px;margin:20px 0">
+        <p style="margin:0 0 4px;font-size:11px;color:#999;font-weight:bold;text-transform:uppercase;letter-spacing:0.07em">Note from ${esc(senderName) || "the sender"}:</p>
+        <p style="margin:0;color:#333;line-height:1.6;white-space:pre-wrap">${esc(customMessage.trim())}</p>
+      </div>`
+    : "";
 
   const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333">
     <div style="background:#f8f9fa;border-radius:8px;padding:30px;margin-bottom:20px">
       <div style="display:inline-block;background:#1e3a5f;color:white;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:bold;margin-bottom:16px;letter-spacing:0.05em">REVIEW REQUEST</div>
       <h2 style="color:#1a1a2e;margin-top:0">Document Review Required</h2>
-      ${messageHtml}
+      <p style="color:#555;line-height:1.6">You have been asked to review the following document before it is sent for signatures. Please examine it carefully and either approve or request changes.</p>
+      ${reviewNoteHtml}
       <div style="background:white;border:1px solid #e0e0e0;border-radius:6px;padding:16px;margin:20px 0">
         <p style="margin:0;font-size:14px;color:#888">Document</p>
         <p style="margin:4px 0 0;font-weight:bold;font-size:16px">${esc(doc.title)}</p>

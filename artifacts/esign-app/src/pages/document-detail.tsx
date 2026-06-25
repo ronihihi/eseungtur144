@@ -248,7 +248,7 @@ export function DocumentDetailPage() {
       sendFormInitialized.current = true;
       sendForm.reset({
         subject: `Signature Request: ${doc.title}`,
-        message: `Please review and sign the document "${doc.title}".`,
+        message: "",
       });
     }
   }, [doc?.title, sendForm]);
@@ -614,8 +614,8 @@ export function DocumentDetailPage() {
                       )} />
                       <FormField control={sendForm.control} name="message" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Message (Optional)</FormLabel>
-                          <FormControl><Textarea rows={4} {...field} /></FormControl>
+                          <FormLabel>Personal note to recipients (optional)</FormLabel>
+                          <FormControl><Textarea rows={4} placeholder="Add a personal message that will appear in the email…" {...field} /></FormControl>
                         </FormItem>
                       )} />
                       <DialogFooter>
