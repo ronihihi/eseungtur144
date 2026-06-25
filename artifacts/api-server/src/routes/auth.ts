@@ -276,8 +276,9 @@ router.get("/auth/azure/callback", async (req: Request, res: Response) => {
         res.redirect("/auth?error=account_conflict");
         return;
       }
-      const firstUser = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
-      const role = firstUser.length === 0 ? "admin" : "user";
+      // SEC-6: SSO users are never auto-promoted to admin — assign "user" always.
+      // Admin bootstrap must go through the local registration path with BOOTSTRAP_ADMIN_TOKEN.
+      const role = "user";
       const id = uuidv4();
       await db.insert(usersTable).values({ id, name, email, role, provider: "azure", azureId });
       users = [{ id, name, email, role, provider: "azure", azureId, password: null, signatureData: null, emailVerified: true, createdAt: new Date() }];

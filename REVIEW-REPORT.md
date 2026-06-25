@@ -11,12 +11,12 @@
 
 | Severity | Count |
 |----------|-------|
-| P0 remaining (partial) | 2 |
+| P0 remaining | 0 |
 | P1 remaining | 1 |
 | P2 remaining | 1 |
-| New findings | 3 |
+| New findings applied | 1 of 3 (NF-1 fixed; NF-2 and NF-3 documented) |
 
-Typecheck: **0 errors**. No build errors. No application code was modified.
+Typecheck: **0 errors**. No build errors.
 
 ---
 
@@ -29,7 +29,7 @@ Typecheck: **0 errors**. No build errors. No application code was modified.
 | SEC-3 | ✅ Fixed | `admin.ts:328-332` | `escape()` prefixes `= + - @ \t \r` with a single quote; double-quotes are doubled; BOM prepended |
 | SEC-4 | ⚠️ Partial | `lib/db/src/index.ts:15-26` | Production correctly throws if `DATABASE_CA_CERT` is absent and uses `rejectUnauthorized: true`. **In non-production, fallback is `rejectUnauthorized: false`** — acceptable for dev but means a misconfigured `NODE_ENV` would silently drop TLS verification |
 | SEC-5 | ✅ Fixed | `emailService.ts:6-13,67,111` | `esc()` neutralizes `& < > " '`; applied to sender name, document title, and personal note in both signing and review email templates |
-| SEC-6 | ⚠️ Partial | `auth.ts:71-78` (local), `auth.ts:279-280` (Azure) | Local registration correctly checks `BOOTSTRAP_ADMIN_TOKEN` when the users table is empty. **Azure callback (`auth.ts:280`) assigns `role = "admin"` for the first Azure user with no token check.** If Azure SSO is enabled and the users table is empty, the first Azure login silently becomes admin — see New Finding #1 |
+| SEC-6 | ✅ Fixed | `auth.ts:71-78` (local), `auth.ts:282-284` (Azure) | Local registration checks `BOOTSTRAP_ADMIN_TOKEN` when users table is empty. Azure callback now unconditionally assigns `role = "user"` — SSO users can never be auto-promoted to admin; bootstrap must go through local registration |
 | SEC-7 | ✅ Fixed | `auth.ts:52-53,116-119` | `DUMMY_HASH` constant; `bcrypt.compare()` runs for unknown users; single generic error returned for both "no user" and "wrong password" |
 | BUG-1 | ✅ Fixed | `auth.ts:63,110,265,307` | Email lowercased in register, login, Azure callback, and forgot-password |
 | BUG-2 | ✅ Fixed | `signing.ts:526-535` | Completion decided by a fresh `SELECT count()` DB query, not the in-memory snapshot |
@@ -53,17 +53,18 @@ Typecheck: **0 errors**. No build errors. No application code was modified.
 
 ## 3. New or Remaining Findings
 
-### NF-1 — SEC-6 Azure callback grants admin without BOOTSTRAP_ADMIN_TOKEN (P0)
-**File:** `artifacts/api-server/src/routes/auth.ts:279-280`
+### NF-1 — SEC-6 Azure callback grants admin without BOOTSTRAP_ADMIN_TOKEN (P0) — ✅ FIXED
+**File:** `artifacts/api-server/src/routes/auth.ts:282-284`
+
+Fixed by replacing the first-user check with an unconditional `"user"` assignment:
 
 ```ts
-const firstUser = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
-const role = firstUser.length === 0 ? "admin" : "user";
+// SEC-6: SSO users are never auto-promoted to admin — assign "user" always.
+// Admin bootstrap must go through the local registration path with BOOTSTRAP_ADMIN_TOKEN.
+const role = "user";
 ```
 
-When Azure SSO is configured and the users table is empty, the first person to authenticate via Azure is silently promoted to admin — no `BOOTSTRAP_ADMIN_TOKEN` required. The local-registration path is correctly gated (lines 71-78) but this codepath is not. If Azure SSO is enabled on a fresh deployment, an attacker who can authenticate against the Azure tenant becomes the first admin.
-
-**Recommendation:** Apply the same token gate: if `process.env.BOOTSTRAP_ADMIN_TOKEN` is set, require it to be passed (or transmitted via a separate bootstrap mechanism) before assigning admin on Azure first-login. If it is not critical for Azure first-login to auto-admin, default to `"user"` and have an existing admin promote the account.
+Azure-authenticated accounts are now always created as `"user"`. Admin promotion must be done explicitly by an existing admin through the user management UI.
 
 ---
 
@@ -134,13 +135,11 @@ The repeated `ENOENT /public/index.html` errors on `GET /` are expected: the API
 
 ## 5. Still Needs Attention (priority order)
 
-1. **P0 — NF-1:** `auth.ts:279-280` — Azure callback first-user admin bypass: apply BOOTSTRAP_ADMIN_TOKEN gate (or default to "user") on the Azure new-user creation path.
+1. **P1 — NF-2 / HARD-1:** `app.ts:174` + `signing.ts` — Apply a route-level `express.json({ limit: "5mb" })` to the signature submission endpoint to prevent 413 errors before the internal cap is reached.
 
-2. **P0 — SEC-4 (partial):** `lib/db/src/index.ts:26` — Consider adding a visible warning log when `rejectUnauthorized: false` is active, so a misconfigured `NODE_ENV` cannot silently degrade TLS.
+2. **P2 — NF-3 / SEC-4:** `lib/db/src/index.ts:26` — Add a visible warning log when `rejectUnauthorized: false` is active, so a misconfigured `NODE_ENV` cannot silently degrade TLS in a non-dev environment.
 
-3. **P1 — NF-2 / HARD-1:** `app.ts:174` + `signing.ts` — Apply a route-level `express.json({ limit: "5mb" })` to the signature submission endpoint to prevent 413 errors before the internal cap is reached.
-
-4. **P2 — CLN-1:** `review.tsx:55,82` — Replace the two raw `fetch()` calls with the generated `useGetSigningInfo` and `useSubmitReview` hooks (or equivalent) for consistency with the rest of the codebase.
+3. **P2 — CLN-1:** `review.tsx:55,82` — Replace the two raw `fetch()` calls with the generated `useGetSigningInfo` and `useSubmitReview` hooks for consistency.
 
 ---
 
