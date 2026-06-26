@@ -187,9 +187,10 @@ app.use(
         "Blocked request from unauthorized CORS origin",
       );
 
-      callback(
-        new Error(`CORS: origin "${normalizedOrigin}" is not allowed`),
-      );
+      // Pass null (not an Error) so Express does not invoke the error handler.
+      // The browser will still block cross-origin reads but the request itself
+      // completes normally — static assets are served, just without CORS headers.
+      callback(null, false);
     },
   }),
 );
