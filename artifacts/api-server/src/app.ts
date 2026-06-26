@@ -216,7 +216,7 @@ const PgStore = connectPgSimple(session);
 const sessionStore = new PgStore({
   pool,
   tableName: "user_sessions",
-  createTableIfMissing: false,
+  createTableIfMissing: true,
   pruneSessionInterval: 60 * 60,
 });
 
