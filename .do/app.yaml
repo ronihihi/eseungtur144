@@ -5,51 +5,62 @@ services:
   - name: api
     dockerfile_path: Dockerfile
     github:
-      repo: your-github-org/workflowsign
+      repo: YOUR_GITHUB_ORG/YOUR_REPO_NAME
       branch: main
       deploy_on_push: true
     http_port: 8080
     instance_count: 1
-    instance_size_slug: basic-xxs
+    instance_size_slug: basic-s
     health_check:
       http_path: /health
+      initial_delay_seconds: 30
+      period_seconds: 30
+      timeout_seconds: 10
+      failure_threshold: 3
     envs:
+      # ── Runtime ─────────────────────────────────────────────────────────────
       - key: NODE_ENV
         value: production
       - key: PORT
         value: "8080"
+
+      # ── Database (your existing DO managed Postgres) ─────────────────────────
+      # Set these as secrets in the DO App Platform dashboard → app → Settings → Env Vars
       - key: DATABASE_URL
-        value: ${db.DATABASE_URL}
         type: SECRET
       - key: DATABASE_CA_CERT
-        value: ${db.CA_CERT}
-      - key: SESSION_SECRET
-        value: ""
-        type: SECRET
-      - key: APP_URL
-        value: ${APP_URL}
-      - key: APP_ORIGIN
-        value: ${APP_URL}
-      - key: GCP_SA_KEY_B64
-        value: ""
-        type: SECRET
-      - key: DEFAULT_OBJECT_STORAGE_BUCKET_ID
-        value: your-gcs-bucket-id
-      - key: SMTP_HOST
-        value: ""
-        type: SECRET
-      - key: SMTP_PORT
-        value: ""
-        type: SECRET
-      - key: SMTP_USER
-        value: ""
-        type: SECRET
-      - key: SMTP_PASS
-        value: ""
         type: SECRET
 
-databases:
-  - name: db
-    engine: PG
-    version: "16"
-    production: true
+      # ── Session ──────────────────────────────────────────────────────────────
+      - key: SESSION_SECRET
+        type: SECRET
+
+      # ── DO Spaces (file storage) ─────────────────────────────────────────────
+      - key: DO_SPACES_KEY
+        type: SECRET
+      - key: DO_SPACES_SECRET
+        type: SECRET
+      - key: DO_SPACES_BUCKET
+        value: estagure
+      - key: DO_SPACES_ENDPOINT
+        value: sfo3.digitaloceanspaces.com
+
+      # ── Email (optional — sending is skipped silently if not set) ─────────────
+      - key: SMTP_HOST
+        type: SECRET
+      - key: SMTP_PORT
+        type: SECRET
+      - key: SMTP_USER
+        type: SECRET
+      - key: SMTP_PASS
+        type: SECRET
+
+      # ── Microsoft SSO (optional — hides the SSO button if not set) ───────────
+      # - key: AZURE_TENANT_ID
+      #   type: SECRET
+      # - key: AZURE_CLIENT_ID
+      #   type: SECRET
+      # - key: AZURE_CLIENT_SECRET
+      #   type: SECRET
+      # - key: AZURE_REDIRECT_URI
+      #   value: https://YOUR_APP_DOMAIN/api/auth/azure/callback

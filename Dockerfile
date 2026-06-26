@@ -24,6 +24,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080
 
+# LibreOffice — required for DOCX → PDF conversion at upload time
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libreoffice \
+      fonts-dejavu-core \
+      fonts-liberation \
+ && rm -rf /var/lib/apt/lists/*
+
 # API bundle + pruned node_modules from the deploy step
 COPY --from=build /prod/api ./
 
