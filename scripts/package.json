@@ -6,6 +6,7 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "migrate-to-do": "tsx ./src/migrate-files-to-do.mts",
+    "migrate-prod-to-do": "tsx ./src/migrate-prod-to-do.mts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
