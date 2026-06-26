@@ -156,10 +156,9 @@ const allowedOrigins = isProduction
   : [...configuredOrigins, ...developmentOrigins, ...replitOrigins];
 
 if (isProduction && allowedOrigins.length === 0) {
-  logger.error(
-    "No allowed origins configured in production — set APP_ORIGIN or ensure REPLIT_DOMAINS is available",
+  logger.warn(
+    "No allowed origins configured in production — set APP_ORIGIN. Running without CORS restrictions.",
   );
-  process.exit(1);
 }
 
 app.use(
