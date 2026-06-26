@@ -1,0 +1,39 @@
+Review the entire application and ensure it is fully responsive and works correctly on all screen sizes and device types, including:
+
+* Smartphones: Android and iPhone
+* Tablets: Android tablets and iPads
+* Laptops and desktop computers
+* Small, medium, large, and ultra-wide screens
+* Portrait and landscape orientations
+
+Please review every page, component, form, table, dashboard, menu, modal, button, image, chart, and navigation element.
+
+Requirements:
+
+1. Use a mobile-first responsive design approach.
+2. Ensure there is no horizontal page overflow or unnecessary scrolling.
+3. Make navigation mobile-friendly, using a collapsible menu where appropriate.
+4. Ensure text, buttons, icons, and form fields are readable and easy to use on touchscreens.
+5. Make tables responsive. On smaller screens, use horizontal table scrolling, card layouts, or hide non-essential columns without losing important information.
+6. Ensure modals, dropdowns, tooltips, notifications, and date pickers remain inside the visible screen area.
+7. Ensure images, videos, charts, and embedded content scale correctly.
+8. Verify that forms, validation messages, file uploads, and action buttons work properly on mobile devices.
+9. Ensure buttons and interactive elements have suitable touch-target sizes and spacing.
+10. Test common screen widths, including 320px, 375px, 390px, 414px, 768px, 1024px, 1366px, 1440px, and larger screens.
+11. Test portrait and landscape orientation.
+12. Check accessibility, including keyboard navigation, visible focus states, readable contrast, labels, and screen-reader-friendly elements.
+13. Maintain the existing functionality, business logic, permissions, APIs, database structure, and visual identity.
+14. Do not remove features or rebuild the application unnecessarily.
+15. Fix only the responsive-design, layout, usability, and compatibility issues that you identify.
+16. Avoid hard-coded widths that break on smaller screens. Use responsive units, flexible layouts, CSS Grid, Flexbox, and appropriate breakpoints.
+17. Confirm that the application works in current versions of Chrome, Edge, Safari, and Firefox.
+
+After completing the review:
+
+* Provide a list of the responsive-design issues found.
+* Explain which files and components were changed.
+* Describe how each issue was fixed.
+* Report any remaining limitations.
+* Confirm the screen sizes and devices tested.
+* Run the application’s existing tests, linting, type checks, and build process.
+* Do not make unrelated design or functionality changes.

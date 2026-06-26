@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { useLogout, useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
-import { LogOut, FileSignature, LayoutDashboard, Plus, PenLine, Users, ClipboardList, ChevronDown } from "lucide-react";
+import { LogOut, FileSignature, LayoutDashboard, Plus, PenLine, Users, ClipboardList, ChevronDown, Menu, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -12,15 +13,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
-function NavLink({ href, icon: Icon, label, active }: { href: string; icon: React.ElementType; label: string; active: boolean }) {
+function NavLink({ href, icon: Icon, label, active, onClick }: { href: string; icon: React.ElementType; label: string; active: boolean; onClick?: () => void }) {
   return (
     <Link
       href={href}
+      onClick={onClick}
       className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-full transition-all ${
         active
           ? "bg-primary/10 text-primary"
@@ -33,11 +36,29 @@ function NavLink({ href, icon: Icon, label, active }: { href: string; icon: Reac
   );
 }
 
+function MobileNavLink({ href, icon: Icon, label, active, onClick }: { href: string; icon: React.ElementType; label: string; active: boolean; onClick: () => void }) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={`flex items-center gap-3 text-base font-medium px-3 py-3 rounded-lg transition-all ${
+        active
+          ? "bg-primary/10 text-primary"
+          : "text-foreground hover:bg-muted"
+      }`}
+    >
+      <Icon className="h-5 w-5" />
+      {label}
+    </Link>
+  );
+}
+
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const { data: me } = useGetMe();
   const logoutMutation = useLogout();
   const queryClient = useQueryClient();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
     logoutMutation.mutate(undefined, {
@@ -54,6 +75,13 @@ export function Layout({ children }: LayoutProps) {
   const isAdmin = me?.user?.role === "admin";
   const canSeeAudit = me?.user?.role === "admin" || me?.user?.role === "auditor";
 
+  const navLinks = [
+    { href: "/", icon: LayoutDashboard, label: "Dashboard", show: true },
+    { href: "/documents/upload", icon: Plus, label: "New Document", show: true },
+    { href: "/admin/users", icon: Users, label: "Users", show: isAdmin },
+    { href: "/admin/audit", icon: ClipboardList, label: "Audit Log", show: canSeeAudit },
+  ].filter(l => l.show);
+
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background">
       <header className="sticky top-0 z-30 w-full border-b bg-card/80 backdrop-blur-sm">
@@ -64,15 +92,11 @@ export function Layout({ children }: LayoutProps) {
             </div>
           </Link>
 
+          {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
-            <NavLink href="/" icon={LayoutDashboard} label="Dashboard" active={location === "/"} />
-            <NavLink href="/documents/upload" icon={Plus} label="New Document" active={location === "/documents/upload"} />
-            {isAdmin && (
-              <NavLink href="/admin/users" icon={Users} label="Users" active={location === "/admin/users"} />
-            )}
-            {canSeeAudit && (
-              <NavLink href="/admin/audit" icon={ClipboardList} label="Audit Log" active={location === "/admin/audit"} />
-            )}
+            {navLinks.map(l => (
+              <NavLink key={l.href} href={l.href} icon={l.icon} label={l.label} active={location === l.href} />
+            ))}
           </nav>
 
           <div className="flex items-center gap-2 ml-auto">
@@ -116,11 +140,52 @@ export function Layout({ children }: LayoutProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Mobile hamburger */}
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden h-8 w-8" aria-label="Open navigation menu">
+                  {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72 pt-12">
+                <nav className="flex flex-col gap-1">
+                  {navLinks.map(l => (
+                    <MobileNavLink
+                      key={l.href}
+                      href={l.href}
+                      icon={l.icon}
+                      label={l.label}
+                      active={location === l.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                    />
+                  ))}
+                  <div className="mt-4 pt-4 border-t">
+                    <SavedSignatureDialog>
+                      <button
+                        className="flex items-center gap-3 text-base font-medium px-3 py-3 rounded-lg w-full text-foreground hover:bg-muted transition-all"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <PenLine className="h-5 w-5" />
+                        My Signature
+                      </button>
+                    </SavedSignatureDialog>
+                    <button
+                      onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
+                      className="flex items-center gap-3 text-base font-medium px-3 py-3 rounded-lg w-full text-destructive hover:bg-destructive/10 transition-all"
+                    >
+                      <LogOut className="h-5 w-5" />
+                      Sign out
+                    </button>
+                  </div>
+                </nav>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 container mx-auto px-4 py-8">
+      <main className="flex-1 container mx-auto px-4 py-4 md:py-8">
         {children}
       </main>
     </div>

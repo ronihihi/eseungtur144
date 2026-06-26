@@ -217,7 +217,7 @@ export function AdminAuditPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <ClipboardList className="h-6 w-6 text-primary" />
@@ -263,7 +263,7 @@ export function AdminAuditPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="all">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="all" className="gap-1.5">
             <ClipboardList className="h-3.5 w-3.5" />
             All{tabCount("all")}
@@ -298,7 +298,7 @@ export function AdminAuditPage() {
                     {tab === "review" && "Reviewer approvals and change requests"}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="p-0">
+                <CardContent className="p-0 overflow-x-auto">
                   <EventTable
                     events={filtered}
                     isLoading={isLoading}

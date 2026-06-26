@@ -158,7 +158,7 @@ export function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Users className="h-6 w-6 text-primary" />
@@ -269,7 +269,7 @@ export function AdminUsersPage() {
             Users can sign in with email/password or Microsoft SSO
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           {isLoading ? (
             <div className="p-8 text-center text-muted-foreground">Loading users…</div>
           ) : users.length === 0 ? (

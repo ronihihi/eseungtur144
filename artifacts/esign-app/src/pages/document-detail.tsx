@@ -508,15 +508,15 @@ export function DocumentDetailPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">{doc.title}</h1>
-            <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
-              <span>{doc.filename}</span>
-              <span>•</span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-muted-foreground">
+              <span className="truncate max-w-[18rem]">{doc.filename}</span>
+              <span className="hidden sm:inline">•</span>
               <span>{format(new Date(doc.createdAt), "MMM d, yyyy")}</span>
-              <span>•</span>
+              <span className="hidden sm:inline">•</span>
               <span className="capitalize">{doc.signingOrder}</span>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={doc.status} />
             {isPdf && (
               <DownloadButton docId={id} filename={doc.filename} />
