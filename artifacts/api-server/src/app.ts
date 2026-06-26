@@ -64,15 +64,28 @@ app.use(
 
 app.use(
   helmet({
+    // X-Frame-Options: SAMEORIGIN — prevents clickjacking from external origins
+    frameguard: { action: "sameorigin" },
+
+    // X-Content-Type-Options: nosniff — prevents MIME sniffing attacks
+    noSniff: true,
+
+    // Referrer-Policy — only send origin on cross-origin requests, never full URL
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+
+    // Cross-Origin-Resource-Policy — restrict resource loading to same origin
+    crossOriginResourcePolicy: { policy: "same-origin" },
+
+    // Cross-Origin-Opener-Policy — isolate browsing context from other origins
+    crossOriginOpenerPolicy: { policy: "same-origin" },
+
+    // Cross-Origin-Embedder-Policy — all cross-origin resources must opt in
+    crossOriginEmbedderPolicy: { policy: "require-corp" },
+
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: [
-          "'self'",
-          "'unsafe-inline'",
-          "'unsafe-eval'",
-          "blob:",
-        ],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:", "blob:"],
         fontSrc: ["'self'", "data:"],
@@ -80,12 +93,23 @@ app.use(
         workerSrc: ["'self'", "blob:"],
         connectSrc: ["'self'"],
         frameSrc: ["'none'"],
-        frameAncestors: ["'none'"],
+        // Allow embedding only from same origin (consistent with X-Frame-Options)
+        frameAncestors: ["'self'"],
+        // Force HTTPS for all resources
+        upgradeInsecureRequests: [],
       },
     },
-    crossOriginEmbedderPolicy: false,
   }),
 );
+
+// Permissions-Policy — disable powerful browser APIs not needed by this app
+app.use((_req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "geolocation=(), camera=(), microphone=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()",
+  );
+  next();
+});
 
 // ── CORS configuration ───────────────────────────────────────────────────────
 //

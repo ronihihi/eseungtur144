@@ -1,0 +1,55 @@
+Status: Missing Value
+Action required
+The CSP header allows you to explicitly define the sources from which a browser can load components when rendering your application. It supersedes previously recommended headers like X-WebKit-CSP and X-Content-Security-Policy.
+
+Implementing the CSP header helps you limit cross-site scripting (XSS) attack vectors by minimising the routes through which an attacker can inject malicious code through the browser.
+
+Think of it this way: if a user is loading https://yoursite.com, then there should be no way for that user to also be served code from http://EvilSite.com.
+
+There are a number of CSP policies for which you can define values in your CSP header, including:
+
+• base-uri restricts the URLs that can appear in a page's <base> element.
+• child-src lists the URLs for workers and embedded frame contents. For example, child-src https://vimeo.com would enable embedding videos from Vimeo but not from other origins like YouTube.
+• connect-src limits the origins that you can connect to (via XHR, WebSockets, and EventSource).
+• font-src specifies the origins that can serve web fonts - very important if you're using a service like Google Fonts.
+• form-action lists valid endpoints for submission from <form> tags.
+• frame-ancestors specifies the sources that can embed the current page. This directive applies to <frame>, <iframe>, <embed>, and <applet> tags. This directive can't be used in <meta> tags and applies only to non-HTML resources.
+• frame-src will falls back to child-src if it is not specified.
+• img-src defines the origins from which images can be loaded.
+• media-src restricts the origins allowed to deliver video and audio.
+• object-src allows control over Flash and other plugins.
+• plugin-types limits the kinds of plugins a page may invoke.
+• report-uri specifies a URL where a browser will send reports when a content security policy is violated. This directive can't be used in <meta> tags.
+• style-src is the counterpart of script-src for CSS stylesheets.
+• upgrade-insecure-requests directs the browser to change HTTP to HTTPS - particularly useful for websites with many old URLs that need to be served with HTTPS.
+
+The CSP is an opt-in header. Which means that if you don't explicitly set a value for directive then browsers interpret the value as being wide open: *.
+
+You can override this default behaviour by specifying a default-src directive. This directive defines the defaults for most directives that you leave unspecified. Generally, this applies to any directive that ends with -src. If default-src is set to https://yoursite.com, and you fail to specify a font-src directive, then you can load fonts from https://yoursite.com, and nowhere else.
+
+Correct & Secure CSP Syntax
+The correct syntax for giving directives multiple values is:
+Content-Security-Policy: script-src https://host1.com https://host2.com;
+
+A highly secure and properly implemented CSP header could look something like this:
+Content-Security-Policy: "default-src 'self'; script-src 'self'; img-src 'self'; style-src 'self';
+
+You should read about "nonce" and "hashing" requirements in Google's discussion of the CSP header if you are planning to add "whitelisted" domain sources like this:
+Content-Security-Policy: " style-src 'self' 'unsafe-inline' http: https: fonts.googleapis.com"
+
+Common Workarounds & Associated Security Issues
+However, the CSP header is very complex to implement, particularly if you are trying to retro-fit it to your application. If you apply something as strict as the version above, then parts of your application could stop working, particularly if it relies on lots of inline JS and CSS (which is common for most web applications).
+
+In this case, you might have to weaken CSP strictness by implementing  'unsafe-inline' and 'unsafe-eval' keywords like this:
+Content-Security-Policy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; img-src 'self'; style-src 'self';
+
+By adding  'unsafe-inline' and 'unsafe-eval' keywords to your CSP, you are effectively negating the purpose of the header. This is because these two keywords potentially allow attackers to launch the XSS attacks that this header is designed to prevent.
+
+At The Very Least Implement This CSP Header
+However, even if you are not planning to add all the directives listed above in the immediate future, you should add at least the following CSP directive to your headers:
+
+For nginx, in your nginx.conf or equivalent file:
+Content-Security-Policy: upgrade-insecure-requests;
+
+For Apache, in your httpd.conf or equivalent file within the <VirtualHost *:443> section:
+Header always set Content-Security-Policy upgrade-insecure-requests;

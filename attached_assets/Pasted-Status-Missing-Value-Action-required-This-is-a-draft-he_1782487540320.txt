@@ -1,0 +1,31 @@
+Status: Missing Value
+Action required
+This is a draft header that has been in "recommendation" mode since early 2017, but information security best-practice suggests that you should implement it.
+
+The Referrer-Policy header helps you control if and how much information your application submits to external websites that your users are clicking through to.
+
+While this may be useful on static sites or affiliate links where attribution is important, it becomes very powerful when your application refers your users to external sites for these two reasons:
+
+• Privacy: The URL might contain information that could be used to determine the identity of the user; and
+• Security: You may have URL-based session identifiers in the case of HTTPS. Or there might be so-called capability URLs, which only grant access to a resource to those people who know the exact URL.
+
+The following options are allowed under this header:
+
+• "" or empty string: This can be used to indicate that the Referrer-Policy header has deliberately not been set and some other method is used instead.
+• no-referrer where no referrer header will be set for any request.
+• no-referrer-when-downgrade which directs referrer information to be stripped when traversing from an HTTPS link to an insecure HTTP link.
+• same-origin which will only send referrer information if the source and target domains are the same.
+• origin where the referring domain is sent, but not the exact URL.
+• strict-origin which is the same as "origin" except that the referrer information is stripped when navigating from HTTPS to HTTP.
+• origin-when-cross-origin which instructs the browser to send the entire URL in the referrer information as long as the request is same-origin. Any cross-origin requests will only pass on the origin without the exact path.
+• strict-origin-when-cross-origin is a more restrictive version of "strict-origin" and strips referrer information when navigating from HTTPS to HTTP.
+• unsafe-url is appropriately named because it instructs the browser to send the full URL in the referrer header with each request.
+
+How To Correctly Implement The Referrer-Policy Header
+While your application should never include sensitive information in a URL, it's good to be completely restrictive with this header by setting it to strict-origin-when-cross-origin or strict-origin.
+
+The correct implementation of this header in Nginx is in the server block of your nginx.conf or equivalent file:
+add_header Referrer-Policy "strict-origin-when-cross-origin";
+
+The correct implementation of this header in Apache is in your httpd.conf or equivalent file:
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
