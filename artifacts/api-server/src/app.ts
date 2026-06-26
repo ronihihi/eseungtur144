@@ -209,7 +209,28 @@ app.use(
   }),
 );
 
-// ── PostgreSQL session store ─────────────────────────────────────────────────
+// ── Frontend static files ─────────────────────────────────────────────────────
+// Served BEFORE the session middleware so that DB issues never cause 500s on
+// CSS/JS assets. Static files don't need sessions — only /api routes do.
+
+const publicDir = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../public",
+);
+
+app.use(express.static(publicDir));
+
+// ── Health check (no session needed) ─────────────────────────────────────────
+
+app.get("/health", (_req, res) => {
+  res.status(200).json({
+    status: "ok",
+    environment: process.env.NODE_ENV ?? "development",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ── PostgreSQL session store (scoped to /api only) ────────────────────────────
 
 const PgStore = connectPgSimple(session);
 
@@ -229,33 +250,24 @@ sessionStore.on("error", (error) => {
   );
 });
 
-app.use(
-  session({
-    name: "esign.sid",
-    store: sessionStore,
-    secret: sessionSecret,
-    resave: false,
-    saveUninitialized: false,
-    proxy: isProduction,
+const sessionMiddleware = session({
+  name: "esign.sid",
+  store: sessionStore,
+  secret: sessionSecret,
+  resave: false,
+  saveUninitialized: false,
+  proxy: isProduction,
 
-    cookie: {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: "lax",
-      maxAge: 24 * 60 * 60 * 1000,
-    },
-  }),
-);
-
-// ── Health check ─────────────────────────────────────────────────────────────
-
-app.get("/health", (_req, res) => {
-  res.status(200).json({
-    status: "ok",
-    environment: process.env.NODE_ENV ?? "development",
-    timestamp: new Date().toISOString(),
-  });
+  cookie: {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: "lax",
+    maxAge: 24 * 60 * 60 * 1000,
+  },
 });
+
+// Apply session only to /api routes — static assets never need it.
+app.use("/api", sessionMiddleware);
 
 // ── Application routes ───────────────────────────────────────────────────────
 
@@ -271,18 +283,9 @@ app.use("/api", (req: express.Request, res: express.Response) => {
   });
 });
 
-// ── Frontend static files ─────────────────────────────────────────────────────
-// In production the React build is copied to ./public (one level up from ./dist/).
-// In development this directory won't exist, so express.static is a no-op.
-
-const publicDir = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../public",
-);
-
-app.use(express.static(publicDir));
-
+// ── SPA fallback ──────────────────────────────────────────────────────────────
 // /sign/* uses sign.html (noindex meta tag); everything else uses index.html.
+
 app.use("/sign", (_req: express.Request, res: express.Response) => {
   res.sendFile(path.join(publicDir, "sign.html"));
 });
