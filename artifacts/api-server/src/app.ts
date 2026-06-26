@@ -124,13 +124,16 @@ const replitOrigins = [
     : []),
 ].filter((v, i, a) => a.indexOf(v) === i); // dedupe
 
+// In production, include Replit platform domains (REPLIT_DOMAINS) alongside any
+// manually configured APP_ORIGIN. This lets the app run correctly on Replit
+// autoscale deployments without requiring a separate APP_ORIGIN secret.
 const allowedOrigins = isProduction
-  ? configuredOrigins
+  ? [...configuredOrigins, ...replitOrigins]
   : [...configuredOrigins, ...developmentOrigins, ...replitOrigins];
 
 if (isProduction && allowedOrigins.length === 0) {
   logger.error(
-    "APP_ORIGIN environment variable is not set in production — refusing to start",
+    "No allowed origins configured in production — set APP_ORIGIN or ensure REPLIT_DOMAINS is available",
   );
   process.exit(1);
 }
