@@ -15,7 +15,14 @@ if (!rawUrl) {
 }
 
 const connectionString = rawUrl.replace(/([?&])sslmode=[^&]*/g, "$1").replace(/[?&]$/, "");
-const isDigitalOcean = !!process.env.DO_DATABASE_URL;
+
+// Detect DigitalOcean Postgres by explicit env var or by URL pattern.
+// DO uses a self-signed project CA — we use TLS (encrypted) but skip chain
+// verification the same way DO's own Node.js docs recommend.
+const isDigitalOcean =
+  !!process.env.DO_DATABASE_URL ||
+  connectionString.includes("digitalocean.com") ||
+  connectionString.includes("db.ondigitalocean.com");
 
 export const pool = new Pool({
   connectionString,
