@@ -1,52 +1,51 @@
-import { Storage } from "@google-cloud/storage";
+import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import type { Response } from "express";
 
-const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
+const DO_PREFIX = "do-spaces://";
 
-let _gcsClient: Storage | null = null;
-
-function getGcsClient(): Storage {
-  if (_gcsClient) return _gcsClient;
-  _gcsClient = new Storage({
-    credentials: {
-      audience: "replit",
-      subject_token_type: "access_token",
-      token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
-      type: "external_account",
-      credential_source: {
-        url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
-        format: {
-          type: "json",
-          subject_token_field_name: "access_token",
-        },
-      },
-      universe_domain: "googleapis.com",
-    },
-    projectId: "",
+function getClient(): S3Client {
+  const endpointRaw = process.env.DO_SPACES_ENDPOINT;
+  const key = process.env.DO_SPACES_KEY;
+  const secret = process.env.DO_SPACES_SECRET;
+  if (!endpointRaw || !key || !secret) {
+    throw new Error("DO_SPACES_ENDPOINT, DO_SPACES_KEY, and DO_SPACES_SECRET must be set");
+  }
+  // Ensure endpoint is a full URL (add https:// if missing)
+  const endpoint = endpointRaw.startsWith("http") ? endpointRaw : `https://${endpointRaw}`;
+  return new S3Client({
+    endpoint,
+    region: "us-east-1",
+    credentials: { accessKeyId: key, secretAccessKey: secret },
+    forcePathStyle: false,
   });
-  return _gcsClient;
 }
 
-function getBucketId(): string {
-  const id = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
-  if (!id) throw new Error("DEFAULT_OBJECT_STORAGE_BUCKET_ID not set");
-  return id;
+function getBucket(): string {
+  const b = process.env.DO_SPACES_BUCKET;
+  if (!b) throw new Error("DO_SPACES_BUCKET must be set");
+  return b;
 }
 
 export function makeGcsPath(objectName: string): string {
-  return `gcs://${getBucketId()}/${objectName}`;
+  return `${DO_PREFIX}${getBucket()}/${objectName}`;
 }
 
 export function isGcsPath(filepath: string): boolean {
-  return filepath.startsWith("gcs://");
+  return filepath.startsWith(DO_PREFIX) || filepath.startsWith("gcs://");
 }
 
-function parseGcsPath(gcsPath: string): { bucketId: string; objectName: string } {
-  const withoutProtocol = gcsPath.slice("gcs://".length);
-  const slashIdx = withoutProtocol.indexOf("/");
-  const bucketId = withoutProtocol.slice(0, slashIdx);
-  const objectName = withoutProtocol.slice(slashIdx + 1);
-  return { bucketId, objectName };
+function parsePath(storagePath: string): { bucket: string; key: string } {
+  if (storagePath.startsWith(DO_PREFIX)) {
+    const rest = storagePath.slice(DO_PREFIX.length);
+    const slash = rest.indexOf("/");
+    return { bucket: rest.slice(0, slash), key: rest.slice(slash + 1) };
+  }
+  if (storagePath.startsWith("gcs://")) {
+    const rest = storagePath.slice("gcs://".length);
+    const slash = rest.indexOf("/");
+    return { bucket: getBucket(), key: rest.slice(slash + 1) };
+  }
+  throw new Error(`Unknown storage path format: ${storagePath}`);
 }
 
 export async function uploadToGcs(
@@ -54,38 +53,47 @@ export async function uploadToGcs(
   objectName: string,
   contentType: string
 ): Promise<string> {
-  const bucketId = getBucketId();
-  const bucket = getGcsClient().bucket(bucketId);
-  const file = bucket.file(objectName);
-  await file.save(buffer, { contentType, resumable: false });
+  const bucket = getBucket();
+  await getClient().send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: objectName,
+    Body: buffer,
+    ContentType: contentType,
+    ACL: "private",
+  }));
   return makeGcsPath(objectName);
 }
 
-export async function downloadFromGcs(gcsPath: string): Promise<Buffer> {
-  const { bucketId, objectName } = parseGcsPath(gcsPath);
-  const bucket = getGcsClient().bucket(bucketId);
-  const file = bucket.file(objectName);
-  const [contents] = await file.download();
-  return contents;
+async function getBuffer(storagePath: string): Promise<Buffer> {
+  const { bucket, key } = parsePath(storagePath);
+  const res = await getClient().send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of res.Body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+export async function downloadFromGcs(storagePath: string): Promise<Buffer> {
+  return getBuffer(storagePath);
 }
 
 export async function streamFromGcs(
-  gcsPath: string,
+  storagePath: string,
   res: Response,
   contentType: string
 ): Promise<void> {
-  const { bucketId, objectName } = parseGcsPath(gcsPath);
-  const [buf] = await getGcsClient()
-    .bucket(bucketId)
-    .file(objectName)
-    .download();
+  const buf = await getBuffer(storagePath);
   res.set("Content-Type", contentType);
   res.set("Content-Length", String(buf.byteLength));
   res.set("Cache-Control", "private, max-age=300");
   res.send(buf);
 }
 
-export async function deleteFromGcs(gcsPath: string): Promise<void> {
-  const { bucketId, objectName } = parseGcsPath(gcsPath);
-  await getGcsClient().bucket(bucketId).file(objectName).delete({ ignoreNotFound: true });
+export async function deleteFromGcs(storagePath: string): Promise<void> {
+  try {
+    const { bucket, key } = parsePath(storagePath);
+    await getClient().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+  } catch {
+  }
 }

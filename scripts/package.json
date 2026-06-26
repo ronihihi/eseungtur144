@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "migrate-to-do": "tsx ./src/migrate-files-to-do.mts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
@@ -12,6 +13,9 @@
     "tsx": "catalog:"
   },
   "dependencies": {
-    "@google-cloud/storage": "^7.21.0"
+    "@aws-sdk/client-s3": "^3.1075.0",
+    "@google-cloud/storage": "^7.21.0",
+    "@types/pg": "^8.18.0",
+    "pg": "^8.20.0"
   }
 }
