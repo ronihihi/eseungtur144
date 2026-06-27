@@ -9,6 +9,7 @@ import { db, documentsTable, recipientsTable, signatureFieldsTable } from "@work
 import type { Request, Response } from "express";
 import { buildSignedPdf, SignerRecord, ReviewerRecord, DocMeta } from "./pdfSigner.js";
 import { uploadToGcs, downloadFromGcs, streamFromGcs, isGcsPath, deleteFromGcs } from "../lib/gcsStorage.js";
+import { uploadRateLimit } from "../lib/rateLimiters.js";
 
 const router: IRouter = Router();
 
@@ -79,7 +80,7 @@ const multerUpload = multer({
   },
 });
 
-router.post("/documents", requireAuth, multerUpload.single("file"), async (req: Request, res: Response) => {
+router.post("/documents", requireAuth, uploadRateLimit, multerUpload.single("file"), async (req: Request, res: Response) => {
   try {
     const uploadedFile = req.file;
     const { title, signing_order } = req.body as { title?: string; signing_order?: string };

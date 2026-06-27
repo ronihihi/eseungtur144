@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, boolean, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -23,7 +23,9 @@ export const recipientsTable = pgTable("recipients", {
   reviewNote: text("review_note"),
   reviewChecklist: jsonb("review_checklist"),
   tokenExpiresAt: timestamp("token_expires_at"),
-});
+}, (t) => ({
+  documentIdIdx: index("recipients_document_id_idx").on(t.documentId),
+}));
 
 export const insertRecipientSchema = createInsertSchema(recipientsTable).omit({
   createdAt: true,

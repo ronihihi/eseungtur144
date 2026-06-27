@@ -1,0 +1,78 @@
+Your task is to review the entire project carefully without rushing. Check the frontend, backend, database logic, authentication, authorization, API routes, environment variables, validation, error handling, security, performance, scalability, deployment readiness, and user workflows.
+
+Please do the following:
+
+Review the full codebase and identify any bugs, broken logic, duplicate code, weak structure, or areas that may fail during real usage.
+Review every user workflow end-to-end, including login, permissions, form submission, approvals, dashboard actions, data updates, file uploads if any, reports, emails, notifications, and admin actions.
+Check for security issues, including:
+Missing authentication checks
+Weak authorization or role-based access control
+Exposed secrets or hardcoded credentials
+SQL injection or unsafe database queries
+XSS risks
+CSRF risks
+Unsafe file handling
+Missing input validation
+Sensitive data exposure
+Weak session or token handling
+Review performance and high-load readiness:
+Check API performance
+Check database queries and indexes
+Check unnecessary repeated requests
+Check frontend rendering performance
+Check memory usage risks
+Check slow operations
+Check pagination where needed
+Check rate limiting where needed
+Check whether the system can handle many users at the same time
+Review database structure and data consistency:
+Check schema design
+Check relationships
+Check migrations
+Check constraints
+Check duplicate or unnecessary fields
+Check data validation
+Check transaction safety for important operations
+Review error handling and logging:
+Make sure errors are handled properly
+Make sure users receive clear messages
+Make sure technical errors are logged safely
+Do not expose sensitive backend errors to users
+Add proper fallback handling where needed
+Review code quality:
+Remove unused code
+Remove unnecessary console logs
+Improve naming where needed
+Improve structure and maintainability
+Make sure the code is clean, readable, and production-ready
+Avoid large risky rewrites unless really needed
+Review deployment readiness:
+Check package scripts
+Check environment variable requirements
+Check build/start commands
+Check production configuration
+Check database connection handling
+Check SSL requirements
+Check CORS settings
+Check frontend/backend routing
+
+Before making changes, first provide a clear audit report with:
+
+Critical issues
+High priority issues
+Medium priority improvements
+Low priority cleanup
+Recommended upgrade plan
+
+After the audit, apply safe fixes step by step. Do not break existing functionality. For every change, explain what was changed and why.
+
+Important rules:
+
+Do not rebuild the application from scratch.
+Do not remove existing features.
+Do not change the UI design unless needed for a bug or usability issue.
+Do not change database structure.
+
+
+Keep backward compatibility where possible.
+Make the application stable, secure, scalable, and ready for production/high-load usage.

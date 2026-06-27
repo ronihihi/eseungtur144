@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, index } from "drizzle-orm/pg-core";
 
 export const documentEventsTable = pgTable("document_events", {
   id: text("id").primaryKey(),
@@ -11,6 +11,8 @@ export const documentEventsTable = pgTable("document_events", {
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => ({
+  documentIdIdx: index("doc_events_document_id_idx").on(t.documentId),
+}));
 
 export type DocumentEvent = typeof documentEventsTable.$inferSelect;

@@ -38,5 +38,9 @@ COPY --from=build /prod/api ./
 # Built React frontend — served as static files by Express (see app.ts)
 COPY --from=build /app/artifacts/esign-app/dist/public ./public
 
+# Run as the built-in non-root node user — never run production as root.
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 8080
 CMD ["node", "--enable-source-maps", "dist/index.mjs"]

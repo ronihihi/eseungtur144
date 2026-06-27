@@ -25,6 +25,8 @@ services:
         value: "8080"
       - key: APP_ORIGIN
         value: https://seashell-app-dtiyh.ondigitalocean.app
+      - key: APP_URL
+        value: https://seashell-app-dtiyh.ondigitalocean.app
 
       # ── Database (your existing DO managed Postgres) ─────────────────────────
       # Set these as secrets in the DO App Platform dashboard → app → Settings → Env Vars

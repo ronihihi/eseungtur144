@@ -6,6 +6,7 @@ import { SetRecipientsBody } from "@workspace/api-zod";
 import type { Request, Response } from "express";
 import { sendSigningEmail, sendReviewInviteEmail, sendSignUnlockEmail } from "./emailService.js";
 import { getAppBaseUrl } from "../lib/appUrl.js";
+import { remindRateLimit } from "../lib/rateLimiters.js";
 
 const router: IRouter = Router();
 
@@ -166,7 +167,7 @@ router.post("/documents/:id/send", requireAuth, async (req: Request, res: Respon
   }
 });
 
-router.post("/recipients/:recipientId/remind", requireAuth, async (req: Request, res: Response) => {
+router.post("/recipients/:recipientId/remind", requireAuth, remindRateLimit, async (req: Request, res: Response) => {
   const recipientId = req.params.recipientId as string;
   try {
     const recs = await db
@@ -226,7 +227,7 @@ router.post("/recipients/:recipientId/remind", requireAuth, async (req: Request,
   }
 });
 
-router.post("/documents/:id/remind-all", requireAuth, async (req: Request, res: Response) => {
+router.post("/documents/:id/remind-all", requireAuth, remindRateLimit, async (req: Request, res: Response) => {
   const documentId = req.params.id as string;
   try {
     const docs = await db

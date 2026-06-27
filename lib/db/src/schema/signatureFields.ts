@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, real } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, real, index } from "drizzle-orm/pg-core";
 
 export const signatureFieldsTable = pgTable("signature_fields", {
   id: text("id").primaryKey(),
@@ -12,6 +12,9 @@ export const signatureFieldsTable = pgTable("signature_fields", {
   fieldType: text("field_type").notNull().default("signature"),
   fieldValue: text("field_value"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => ({
+  documentIdIdx: index("sig_fields_document_id_idx").on(t.documentId),
+  recipientIdIdx: index("sig_fields_recipient_id_idx").on(t.recipientId),
+}));
 
 export type SignatureField = typeof signatureFieldsTable.$inferSelect;
