@@ -118,6 +118,28 @@ function safeText(s: string): string {
   }).join("");
 }
 
+/**
+ * Strip C0 (0x00–0x1F) and C1 (0x7F–0x9F) control characters that no font
+ * has glyphs for and that pdf-lib (or fontkit) will reject.  Safe to call
+ * before drawText with any font, including custom Arabic fonts.
+ */
+function stripControlChars(s: string): string {
+  return [...s].filter((ch) => {
+    const cp = ch.codePointAt(0)!;
+    return !((cp >= 0x00 && cp <= 0x1f) || (cp >= 0x7f && cp <= 0x9f));
+  }).join("");
+}
+
+/**
+ * Pick the right sanitizer depending on whether the string contains real
+ * Arabic/RTL text:
+ *  – Real Arabic → custom font (fontkit) → only strip control chars.
+ *  – Everything else (Latin, Mojibake, mixed) → WinAnsi font → full safeText.
+ */
+function sanitizeForDraw(s: string): string {
+  return hasArabic(s) ? stripControlChars(s) : safeText(s);
+}
+
 function generateCertId(documentId: string, completedAt: Date): string {
   const year = completedAt.getFullYear();
   const hash = createHash("sha256")
@@ -333,10 +355,11 @@ async function addAuditPage(
 
   const kv = (label: string, value: string, valueColor = darkText, bold = false) => {
     page.drawText(label, { x: margin, y, size: 8.5, font: fontBold, color: midText });
+    const safeVal = sanitizeForDraw(value);
     const vFont = bold
-      ? selectFont(value, fontBold, fontArabicBold)
-      : selectFont(value, font, fontArabic);
-    page.drawText(value, { x: margin + 135, y, size: 8.5, font: vFont, color: valueColor });
+      ? selectFont(safeVal, fontBold, fontArabicBold)
+      : selectFont(safeVal, font, fontArabic);
+    page.drawText(safeVal, { x: margin + 135, y, size: 8.5, font: vFont, color: valueColor });
     y -= 16;
   };
 
@@ -367,8 +390,8 @@ async function addAuditPage(
       const decisionText = rv.decision === "approved" ? "APPROVED" : "CHANGES REQUESTED";
       const decisionColor = rv.decision === "approved" ? successGreen : rgb(0.75, 0.2, 0.1);
       const cells = [
-        truncate(rv.name, 22),
-        truncate(rv.email, 26),
+        truncate(sanitizeForDraw(rv.name), 22),
+        truncate(sanitizeForDraw(rv.email), 26),
         fmtDateTime(rv.reviewedAt),
       ];
       cells.forEach((c, ci) => {
@@ -382,10 +405,11 @@ async function addAuditPage(
       if (rv.note) {
         const notePrefix = "Note: ";
         const maxNoteChars = 110;
-        const noteText = notePrefix + (rv.note.length > maxNoteChars ? rv.note.slice(0, maxNoteChars - 1) + "\u2026" : rv.note);
+        const safeNote = sanitizeForDraw(rv.note);
+        const noteText = notePrefix + (safeNote.length > maxNoteChars ? safeNote.slice(0, maxNoteChars - 1) + "\u2026" : safeNote);
         const noteH = 16;
         page.drawRectangle({ x: margin, y: y - noteH + 5, width: contentW, height: noteH, color: rgb(1.0, 0.98, 0.92) });
-        const noteFont = selectFont(rv.note, font, fontArabic);
+        const noteFont = selectFont(safeNote, font, fontArabic);
         page.drawText(noteText, { x: margin + 6, y: y - 4, size: 7.5, font: noteFont, color: rgb(0.45, 0.28, 0.0) });
         y -= noteH;
       }
@@ -420,8 +444,8 @@ async function addAuditPage(
     // Show only the first (real client) IP — strip proxy hops after the first comma
     const firstIp = s.ipAddress ? s.ipAddress.split(",")[0].trim() : "\u2014";
     const cells = [
-      truncate(s.name, 18),
-      truncate(s.email, 24),
+      truncate(sanitizeForDraw(s.name), 18),
+      truncate(sanitizeForDraw(s.email), 24),
       fmtDateTime(s.signedAt),
       firstIp,
       "Email Verification",
@@ -545,10 +569,11 @@ export async function buildSignedPdf(
 
       const nameFs = Math.max(4.5, Math.min(6.5, Math.min(dispW, dispH) * 0.14));
       const nameOpts = labelAt(rotation, bx, by, bw, bh, nameFs, 0.76, 3);
-      page.drawText(entry.signerName, {
+      const safeName = sanitizeForDraw(entry.signerName);
+      page.drawText(safeName, {
         x: nameOpts.x, y: nameOpts.y, size: nameFs,
         rotate: nameOpts.rotate,
-        font: selectFont(entry.signerName, fontBold, fontArabicBold),
+        font: selectFont(safeName, fontBold, fontArabicBold),
         color: rgb(0.1, 0.1, 0.1),
       });
 
