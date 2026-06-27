@@ -1,0 +1,4 @@
+Contact: mailto:it@sos-palestine.org
+Preferred-Languages: en, ar
+Policy: https://e-signature.sos-palestine.org/security-policy
+Expires: 2027-01-01T00:00:00.000Z

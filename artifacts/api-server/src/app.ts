@@ -224,11 +224,7 @@ app.use(express.static(publicDir));
 // ── Health check (no session needed) ─────────────────────────────────────────
 
 app.get("/health", (_req, res) => {
-  res.status(200).json({
-    status: "ok",
-    environment: process.env.NODE_ENV ?? "development",
-    timestamp: new Date().toISOString(),
-  });
+  res.status(200).json({ status: "ok" });
 });
 
 // ── PostgreSQL session store (scoped to /api only) ────────────────────────────
@@ -282,6 +278,31 @@ app.use("/api", (req: express.Request, res: express.Response) => {
     error: "Not Found",
     message: `Route ${req.method} ${req.originalUrl} was not found`,
   });
+});
+
+// ── Block scanner-probed non-existent file paths ──────────────────────────────
+// These paths are commonly probed by vulnerability scanners and should never
+// exist on this server. Returning 404 explicitly stops the SPA fallback from
+// serving index.html (200) for them, which scanners misread as "accessible".
+
+const BLOCKED_PATHS = new Set([
+  "/config.xml",
+  "/settings.json",
+  "/.htaccess",
+  "/web.config",
+  "/phpinfo.php",
+  "/wp-login.php",
+  "/wp-admin/",
+  "/.env",
+  "/.git/config",
+]);
+
+app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (BLOCKED_PATHS.has(req.path)) {
+    res.status(404).json({ error: "Not Found" });
+    return;
+  }
+  next();
 });
 
 // ── SPA fallback ──────────────────────────────────────────────────────────────

@@ -2,8 +2,9 @@ User-agent: *
 Disallow: /sign/
 Disallow: /documents/
 Disallow: /admin/
+Disallow: /audit/
 
 Allow: /auth
 Allow: /
 
-Sitemap: https://workflowsign.replit.app/sitemap.xml
+Sitemap: https://e-signature.sos-palestine.org/sitemap.xml

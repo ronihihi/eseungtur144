@@ -115,6 +115,11 @@ router.post("/admin/users/:id/reset-password", requireAdmin, async (req: Request
     return;
   }
   try {
+    const existing = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, id)).limit(1);
+    if (existing.length === 0) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
     const hashed = await bcrypt.hash(password, 10);
     // Also switch provider to "local" so Azure SSO accounts can log in with the new password.
     await db.update(usersTable).set({ password: hashed, mustChangePassword: true, provider: "local" }).where(eq(usersTable.id, id));

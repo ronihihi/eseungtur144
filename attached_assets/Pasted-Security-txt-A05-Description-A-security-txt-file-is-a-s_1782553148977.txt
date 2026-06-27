@@ -1,0 +1,65 @@
+Security.txt
+A05
+ 
+Description
+A security.txt file is a standardized text file that provides a clear way for security researchers and users to report vulnerabilities. Located at https://example.com/.well-known/security.txt, it serves as a "contact card" for responsible disclosure, offering details like contact emails, encryption keys, disclosure policy URLs, and acknowledgment programs. By using security.txt, organizations enhance transparency and encourage prompt reporting of vulnerabilities, ensuring reports reach the right team. Adopting this standard shows a commitment to cybersecurity and facilitates collaboration with ethical hackers to protect users.
+Recommendation
+To improve security, add a security.txt file to your domain for easy vulnerability reporting. Include essential fields like Contact (for reporting issues), and optionally, Encryption (PGP key), Policy (security policies), and Acknowledgements (crediting contributors). Place the file in the .well-known directory, accessible at https://example.com/.well-known/security.txt over HTTPS.
+Record	Reason
+-	Record is missing.
+Forced browsing
+A01
+ 
+Description
+Forced browsing is a security vulnerability where attackers guess URLs or use automated tools to access restricted files, exposing sensitive data like configurations, admin panels, and backups if access controls are weak.
+Recommendation
+Prevent forced browsing with strict access controls, 403 Forbidden responses, and hidden sensitive files. Use URL whitelisting, web application firewall, and regular security audits to block attacks.
+Domain	Record
+https://e-signature.sos-palestine.org	
+https://e-signature.sos-palestine.org/admin/
+https://e-signature.sos-palestine.org/modules/
+https://e-signature.sos-palestine.org/administrator/
+https://e-signature.sos-palestine.org/adminpanel/
+https://e-signature.sos-palestine.org/admin_area/
+https://e-signature.sos-palestine.org/controlpanel/
+https://e-signature.sos-palestine.org/management/
+https://e-signature.sos-palestine.org/console/
+https://e-signature.sos-palestine.org/user/
+https://e-signature.sos-palestine.org/root/
+https://e-signature.sos-palestine.org/secure/
+https://e-signature.sos-palestine.org/dashboard/
+https://e-signature.sos-palestine.org/users/
+https://e-signature.sos-palestine.org/settings/
+https://e-signature.sos-palestine.org/config/
+https://e-signature.sos-palestine.org/private/
+https://e-signature.sos-palestine.org/configurations/
+https://e-signature.sos-palestine.org/databases/
+https://e-signature.sos-palestine.org/panel/
+https://e-signature.sos-palestine.org/system/
+https://e-signature.sos-palestine.org/account/
+https://e-signature.sos-palestine.org/superadmin/
+https://e-signature.sos-palestine.org/core/
+https://e-signature.sos-palestine.org/logs/
+https://e-signature.sos-palestine.org/files/
+https://e-signature.sos-palestine.org/setup/
+https://e-signature.sos-palestine.org/home/
+https://e-signature.sos-palestine.org/config.xml
+https://e-signature.sos-palestine.org/settings.json
+Security.txt
+A05
+ 
+Description
+A security.txt file is a standardized text file that provides a clear way for security researchers and users to report vulnerabilities. Located at https://example.com/.well-known/security.txt, it serves as a "contact card" for responsible disclosure, offering details like contact emails, encryption keys, disclosure policy URLs, and acknowledgment programs. By using security.txt, organizations enhance transparency and encourage prompt reporting of vulnerabilities, ensuring reports reach the right team. Adopting this standard shows a commitment to cybersecurity and facilitates collaboration with ethical hackers to protect users.
+Recommendation
+To improve security, add a security.txt file to your domain for easy vulnerability reporting. Include essential fields like Contact (for reporting issues), and optionally, Encryption (PGP key), Policy (security policies), and Acknowledgements (crediting contributors). Place the file in the .well-known directory, accessible at https://example.com/.well-known/security.txt over HTTPS.
+Record	Reason
+-	The security.txt file contains invalid line endings. Ensure each line ends with a line feed character.
+.htaccess is publicy readable
+A05
+ 
+Description
+The .htaccess file defines critical server configurations like access controls, redirects, and security headers. If exposed, attackers can exploit it to uncover hidden directories, authentication rules, or server settings, leading to potential security risks.
+Recommendation
+To prevent unauthorized access, configure the server to deny public access to .htaccess files by adding the following rule in the main Apache configuration or another .htaccess file: <Files ".htaccess"> Require all denied </Files> Additionally, set file permissions to 600 (chmod 600 .htaccess) to ensure only the owner can read or modify it.
+Domain	Record
+https://e-signature.sos-palestine.org	Htaccess file is publicy readable
