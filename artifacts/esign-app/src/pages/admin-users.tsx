@@ -208,6 +208,11 @@ export function AdminUsersPage() {
           </DialogTitle>
           <DialogDescription>
             Set a temporary password. The user will be required to change it on their next login.
+            {resetUser?.provider === "azure" && (
+              <span className="block mt-1 text-amber-600 font-medium">
+                This account uses Microsoft sign-in. Setting a password will also enable email/password login for them.
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
         <Form {...resetForm}>
@@ -416,16 +421,15 @@ export function AdminUsersPage() {
                               <Shield className="h-4 w-4 text-muted-foreground" />
                             )}
                           </Button>
-                          {user.provider === "local" && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Reset password"
-                              onClick={() => { resetForm.reset(); setResetUser(user); }}
-                            >
-                              <KeyRound className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Reset password"
+                            onClick={() => { resetForm.reset(); setResetUser(user); }}
+                            disabled={isSelf}
+                          >
+                            <KeyRound className="h-4 w-4 text-muted-foreground" />
+                          </Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button
