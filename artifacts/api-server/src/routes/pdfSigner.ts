@@ -586,9 +586,10 @@ export async function buildSignedPdf(
       });
 
     } else {
-      const value = entry.fieldType === "date" && !entry.fieldValue
+      const rawValue = entry.fieldType === "date" && !entry.fieldValue
         ? fmtDate(entry.signedAt)
         : entry.fieldValue;
+      const value = sanitizeForDraw(rawValue);
 
       const [dispW, dispH] = displaySize(rotation, bw, bh);
       const fs = Math.max(7, Math.min(11, Math.min(dispW, dispH) * 0.45));

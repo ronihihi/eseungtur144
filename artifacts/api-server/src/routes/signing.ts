@@ -688,24 +688,22 @@ router.get("/sign/:token/download", signingRateLimit, async (req: Request, res: 
     const entries = signedRecipients.flatMap((r) => {
       const recipientFields = allFields.filter((f) => f.recipientId === r.id);
       const signedAt = r.signedAt ? new Date(r.signedAt) : new Date();
-      const signerName = r.signerName || r.teamName;
-      return recipientFields
-        .filter((f) => f.fieldValue)
-        .map((f) => ({
-          fieldType: (f.fieldType || "signature") as "signature" | "initials" | "date" | "text",
-          fieldValue: f.fieldValue!,
-          signerName,
-          signedAt,
-          page: f.page,
-          x: f.x,
-          y: f.y,
-          width: f.width,
-          height: f.height,
-        }));
+      const signerName = r.signerName || r.teamName || r.email;
+      return recipientFields.map((f) => ({
+        fieldType: (f.fieldValue ? (f.fieldType || "signature") : "text") as "signature" | "initials" | "date" | "text",
+        fieldValue: f.fieldValue ?? "Electronically Signed",
+        signerName,
+        signedAt,
+        page: f.page,
+        x: f.x,
+        y: f.y,
+        width: f.width,
+        height: f.height,
+      }));
     });
 
     const signerRecords: SignerRecord[] = signedRecipients.map((r) => ({
-      name: r.signerName || r.teamName,
+      name: r.signerName || r.teamName || r.email,
       email: r.email,
       signedAt: r.signedAt ? new Date(r.signedAt) : new Date(),
       ipAddress: r.ipAddress,
@@ -714,7 +712,7 @@ router.get("/sign/:token/download", signingRateLimit, async (req: Request, res: 
     const reviewerRecords: ReviewerRecord[] = allRecipients
       .filter((r) => r.requiresReview && r.reviewStatus === "approved")
       .map((r) => ({
-        name: r.signerName || r.teamName,
+        name: r.signerName || r.teamName || r.email,
         email: r.email,
         reviewedAt: r.reviewedAt ?? new Date(),
         ipAddress: r.ipAddress,
