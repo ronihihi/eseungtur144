@@ -137,9 +137,12 @@ function DownloadButton({ docId, filename, variant = "outline", label = "Downloa
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = filename;
+      a.download = filename || "document.pdf";
+      a.style.display = "none";
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch (err) {
       toast({ variant: "destructive", title: "Download failed", description: (err as Error).message });
     } finally {
