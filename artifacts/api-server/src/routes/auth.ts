@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import { randomBytes } from "crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, usersTable, passwordResetTokensTable } from "@workspace/db";
 import { RegisterBody, LoginBody } from "@workspace/api-zod";
 import type { Request, Response } from "express";
@@ -111,7 +111,7 @@ router.post("/auth/login", authRateLimit, async (req: Request, res: Response) =>
     const email = parsed.data.email.toLowerCase();
     const { password } = parsed.data;
 
-    const users = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+    const users = await db.select().from(usersTable).where(sql`lower(${usersTable.email}) = ${email}`).limit(1);
     const user = users[0];
 
     // SEC-7: Run dummy bcrypt to equalise response time regardless of whether
@@ -370,7 +370,7 @@ router.post("/auth/forgot-password", authRateLimit, async (req: Request, res: Re
 
   if (!normalizedEmail) return;
   try {
-    const users = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
+    const users = await db.select().from(usersTable).where(sql`lower(${usersTable.email}) = ${normalizedEmail}`).limit(1);
     const user = users[0];
     if (!user || user.provider !== "local") return;
 
