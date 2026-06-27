@@ -107,6 +107,23 @@ router.post("/admin/users", requireAdmin, async (req: Request, res: Response) =>
   }
 });
 
+router.post("/admin/users/:id/reset-password", requireAdmin, async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const { password } = req.body as { password?: string };
+  if (!password || password.length < 6) {
+    res.status(400).json({ error: "Password must be at least 6 characters" });
+    return;
+  }
+  try {
+    const hashed = await bcrypt.hash(password, 10);
+    await db.update(usersTable).set({ password: hashed, mustChangePassword: true }).where(eq(usersTable.id, id));
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "admin reset password error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.delete("/admin/users/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = req.params.id as string;
   if (id === req.session.userId) {

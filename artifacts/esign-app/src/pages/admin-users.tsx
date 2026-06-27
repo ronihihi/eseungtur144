@@ -42,7 +42,7 @@ import {
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2, Shield, ShieldOff, Users } from "lucide-react";
+import { Plus, Trash2, Shield, ShieldOff, Users, KeyRound } from "lucide-react";
 import { useGetMe } from "@workspace/api-client-react";
 
 const createUserSchema = z.object({
@@ -77,6 +77,14 @@ function RoleBadge({ role }: { role: string }) {
   return <Badge variant="secondary">User</Badge>;
 }
 
+const resetPasswordSchema = z.object({
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  confirmPassword: z.string(),
+}).refine((d) => d.password === d.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+
 export function AdminUsersPage() {
   const { toast } = useToast();
   const { data: me } = useGetMe();
@@ -86,6 +94,13 @@ export function AdminUsersPage() {
   const roleMutation = useUpdateAdminUserRole();
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [resetUser, setResetUser] = useState<AdminUser | null>(null);
+  const [resetSaving, setResetSaving] = useState(false);
+
+  const resetForm = useForm<z.infer<typeof resetPasswordSchema>>({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: { password: "", confirmPassword: "" },
+  });
 
   const form = useForm<z.infer<typeof createUserSchema>>({
     resolver: zodResolver(createUserSchema),
@@ -132,6 +147,31 @@ export function AdminUsersPage() {
     );
   };
 
+  const handleResetPassword = async (values: z.infer<typeof resetPasswordSchema>) => {
+    if (!resetUser) return;
+    setResetSaving(true);
+    try {
+      const res = await fetch(`${import.meta.env.BASE_URL}api/admin/users/${resetUser.id}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ password: values.password }),
+      });
+      const data = await res.json() as { success?: boolean; error?: string };
+      if (!res.ok || !data.success) {
+        toast({ variant: "destructive", title: "Failed to reset password", description: data.error ?? "An error occurred." });
+        return;
+      }
+      toast({ title: `Password reset for ${resetUser.name}`, description: "They will be prompted to set a new password on next login." });
+      setResetUser(null);
+      resetForm.reset();
+    } catch {
+      toast({ variant: "destructive", title: "Network error", description: "Please try again." });
+    } finally {
+      setResetSaving(false);
+    }
+  };
+
   const handleToggleRole = (user: AdminUser) => {
     const roleMap: Record<string, UpdateRoleRequestRole> = { admin: "user", auditor: "admin", user: "admin" };
     const newRole: UpdateRoleRequestRole = roleMap[user.role] ?? "user";
@@ -157,6 +197,60 @@ export function AdminUsersPage() {
   const users = data?.users ?? [];
 
   return (
+    <>
+    {/* Reset password dialog */}
+    <Dialog open={!!resetUser} onOpenChange={(o) => { if (!o) { setResetUser(null); resetForm.reset(); } }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4" />
+            Reset password for {resetUser?.name}
+          </DialogTitle>
+          <DialogDescription>
+            Set a temporary password. The user will be required to change it on their next login.
+          </DialogDescription>
+        </DialogHeader>
+        <Form {...resetForm}>
+          <form onSubmit={resetForm.handleSubmit(handleResetPassword)} className="space-y-4 mt-2">
+            <FormField
+              control={resetForm.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Temporary password</FormLabel>
+                  <FormControl>
+                    <Input type="password" placeholder="At least 6 characters" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={resetForm.control}
+              name="confirmPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Confirm password</FormLabel>
+                  <FormControl>
+                    <Input type="password" placeholder="Repeat the password" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => { setResetUser(null); resetForm.reset(); }}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={resetSaving}>
+                {resetSaving ? "Saving…" : "Reset password"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -322,6 +416,16 @@ export function AdminUsersPage() {
                               <Shield className="h-4 w-4 text-muted-foreground" />
                             )}
                           </Button>
+                          {user.provider === "local" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Reset password"
+                              onClick={() => { resetForm.reset(); setResetUser(user); }}
+                            >
+                              <KeyRound className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          )}
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button
@@ -362,5 +466,6 @@ export function AdminUsersPage() {
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }

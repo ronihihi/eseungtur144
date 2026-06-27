@@ -25,6 +25,7 @@ declare module "express-session" {
     userRole: string;
     hasSavedSignature: boolean;
     emailVerified: boolean;
+    mustChangePassword: boolean;
     oauthState?: string;
   }
 }
@@ -135,8 +136,19 @@ router.post("/auth/login", authRateLimit, async (req: Request, res: Response) =>
     req.session.userRole = user.role;
     req.session.hasSavedSignature = !!user.signatureData;
     req.session.emailVerified = user.emailVerified ?? false;
+    req.session.mustChangePassword = user.mustChangePassword ?? false;
 
-    res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role, hasSavedSignature: !!user.signatureData } });
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        hasSavedSignature: !!user.signatureData,
+        mustChangePassword: user.mustChangePassword ?? false,
+      },
+    });
   } catch (err) {
     req.log.error({ err }, "login error");
     res.status(500).json({ error: "Internal server error" });
@@ -162,6 +174,7 @@ router.get("/auth/me", (req: Request, res: Response) => {
       email: req.session.userEmail,
       role: req.session.userRole ?? "user",
       hasSavedSignature: !!req.session.hasSavedSignature,
+      mustChangePassword: req.session.mustChangePassword ?? false,
     },
   });
 });
@@ -281,7 +294,7 @@ router.get("/auth/azure/callback", async (req: Request, res: Response) => {
       const role = "user";
       const id = uuidv4();
       await db.insert(usersTable).values({ id, name, email, role, provider: "azure", azureId });
-      users = [{ id, name, email, role, provider: "azure", azureId, password: null, signatureData: null, emailVerified: true, createdAt: new Date() }];
+      users = [{ id, name, email, role, provider: "azure", azureId, password: null, signatureData: null, emailVerified: true, mustChangePassword: false, createdAt: new Date() }];
     }
 
     const user = users[0];
@@ -298,6 +311,51 @@ router.get("/auth/azure/callback", async (req: Request, res: Response) => {
   } catch (err) {
     req.log.error({ err }, "azure callback error");
     res.redirect("/auth?error=azure_failed");
+  }
+});
+
+// ── Change password (authenticated, clears mustChangePassword flag) ───────────
+
+router.put("/auth/change-password", async (req: Request, res: Response) => {
+  if (!req.session.userId) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+  const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
+  if (!newPassword || newPassword.length < 6) {
+    res.status(400).json({ error: "New password must be at least 6 characters" });
+    return;
+  }
+  try {
+    const users = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId)).limit(1);
+    const user = users[0];
+    if (!user || user.provider !== "local") {
+      res.status(400).json({ error: "Password change is only available for local accounts" });
+      return;
+    }
+    // If not in a forced-change state, require the current password
+    if (!req.session.mustChangePassword) {
+      if (!currentPassword) {
+        res.status(400).json({ error: "Current password is required" });
+        return;
+      }
+      if (!user.password) {
+        res.status(400).json({ error: "No password set on this account" });
+        return;
+      }
+      const valid = await bcrypt.compare(currentPassword, user.password);
+      if (!valid) {
+        res.status(401).json({ error: "Current password is incorrect" });
+        return;
+      }
+    }
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await db.update(usersTable).set({ password: hashed, mustChangePassword: false }).where(eq(usersTable.id, req.session.userId));
+    req.session.mustChangePassword = false;
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "change password error");
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
