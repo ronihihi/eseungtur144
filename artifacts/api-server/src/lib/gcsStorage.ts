@@ -64,14 +64,29 @@ export async function uploadToGcs(
   return makeGcsPath(objectName);
 }
 
+export class StorageFileNotFoundError extends Error {
+  constructor(storagePath: string) {
+    super(`File not found in storage: ${storagePath}`);
+    this.name = "StorageFileNotFoundError";
+  }
+}
+
 async function getBuffer(storagePath: string): Promise<Buffer> {
   const { bucket, key } = parsePath(storagePath);
-  const res = await getClient().send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  const chunks: Uint8Array[] = [];
-  for await (const chunk of res.Body as AsyncIterable<Uint8Array>) {
-    chunks.push(chunk);
+  try {
+    const res = await getClient().send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of res.Body as AsyncIterable<Uint8Array>) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  } catch (err: unknown) {
+    const name = (err as { name?: string; Code?: string }).name ?? (err as { Code?: string }).Code ?? "";
+    if (name === "NoSuchKey" || name === "NotFound" || name === "404") {
+      throw new StorageFileNotFoundError(storagePath);
+    }
+    throw err;
   }
-  return Buffer.concat(chunks);
 }
 
 export async function downloadFromGcs(storagePath: string): Promise<Buffer> {

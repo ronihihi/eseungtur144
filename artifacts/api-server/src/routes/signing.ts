@@ -10,7 +10,7 @@ import type { Request, Response } from "express";
 import { sendSigningEmail, sendReviewInviteEmail, sendSignUnlockEmail } from "./emailService.js";
 import { getAppBaseUrl } from "../lib/appUrl.js";
 import { buildSignedPdf, SignerRecord, DocMeta, ReviewerRecord } from "./pdfSigner.js";
-import { downloadFromGcs, streamFromGcs, isGcsPath, uploadToGcs } from "../lib/gcsStorage.js";
+import { downloadFromGcs, streamFromGcs, isGcsPath, uploadToGcs, StorageFileNotFoundError } from "../lib/gcsStorage.js";
 import { createHash } from "crypto";
 import { signingRateLimit } from "../lib/rateLimiters.js";
 
@@ -738,6 +738,11 @@ router.get("/sign/:token/download", signingRateLimit, async (req: Request, res: 
     res.set("Content-Length", String(pdfBuf.byteLength));
     res.send(pdfBuf);
   } catch (err) {
+    if (err instanceof StorageFileNotFoundError) {
+      req.log.warn({ err }, "document file not found in storage");
+      res.status(404).json({ error: "The document file could not be found. It may have been uploaded from a different environment — please re-upload the document." });
+      return;
+    }
     req.log.error({ err }, "download signed pdf error");
     res.status(500).json({ error: "Failed to generate signed PDF" });
   }
@@ -785,6 +790,11 @@ router.get("/sign/:token/file", signingRateLimit, async (req: Request, res: Resp
       res.sendFile(path.resolve(doc.filepath));
     }
   } catch (err) {
+    if (err instanceof StorageFileNotFoundError) {
+      req.log.warn({ err }, "sign file not found in storage");
+      res.status(404).json({ error: "File not found in storage" });
+      return;
+    }
     req.log.error({ err }, "serve sign file error");
     res.status(500).json({ error: "Internal server error" });
   }

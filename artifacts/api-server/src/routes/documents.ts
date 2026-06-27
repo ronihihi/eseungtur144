@@ -8,7 +8,7 @@ import { eq, and, inArray } from "drizzle-orm";
 import { db, documentsTable, recipientsTable, signatureFieldsTable } from "@workspace/db";
 import type { Request, Response } from "express";
 import { buildSignedPdf, SignerRecord, ReviewerRecord, DocMeta } from "./pdfSigner.js";
-import { uploadToGcs, downloadFromGcs, streamFromGcs, isGcsPath, deleteFromGcs } from "../lib/gcsStorage.js";
+import { uploadToGcs, downloadFromGcs, streamFromGcs, isGcsPath, deleteFromGcs, StorageFileNotFoundError } from "../lib/gcsStorage.js";
 import { uploadRateLimit } from "../lib/rateLimiters.js";
 
 const router: IRouter = Router();
@@ -187,6 +187,11 @@ router.get("/documents/:id/file", requireAuth, async (req: Request, res: Respons
       res.sendFile(path.resolve(doc.filepath));
     }
   } catch (err) {
+    if (err instanceof StorageFileNotFoundError) {
+      req.log.warn({ err }, "document file not found in storage");
+      res.status(404).json({ error: "File not found in storage" });
+      return;
+    }
     req.log.error({ err }, "serve document file error");
     res.status(500).json({ error: "Internal server error" });
   }
@@ -380,6 +385,11 @@ router.get("/documents/:id/download", requireAuth, async (req: Request, res: Res
     res.set("Content-Length", String(pdfBuf.byteLength));
     res.send(pdfBuf);
   } catch (err) {
+    if (err instanceof StorageFileNotFoundError) {
+      req.log.warn({ err }, "document file not found in storage");
+      res.status(404).json({ error: "The document file could not be found. It may have been uploaded from a different environment — please re-upload the document." });
+      return;
+    }
     req.log.error({ err }, "download signed pdf error");
     res.status(500).json({ error: "Failed to generate signed PDF" });
   }
