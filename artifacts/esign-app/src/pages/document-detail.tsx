@@ -614,7 +614,7 @@ export function DocumentDetailPage() {
                       )} />
                       <FormField control={sendForm.control} name="message" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Personal note to recipients (optional)</FormLabel>
+                          <FormLabel>Write a message to recipients (optional)</FormLabel>
                           <FormControl><Textarea rows={4} placeholder="Add a personal message that will appear in the email…" {...field} /></FormControl>
                         </FormItem>
                       )} />

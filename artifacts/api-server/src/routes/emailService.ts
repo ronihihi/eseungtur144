@@ -51,7 +51,11 @@ function emailShell(body: string): string {
         <tr>
           <td style="background:#1a3a5c;border-radius:12px 12px 0 0;padding:28px 36px;text-align:center;">
             <span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">
-              &#9998;&nbsp; WorkflowSign
+              &#9998;&nbsp; E-Signature Request
+            </span>
+            <br/>
+            <span style="font-size:13px;color:#a8c4e0;letter-spacing:0.3px;margin-top:4px;display:inline-block;">
+              SOS Children&rsquo;s Villages Palestine
             </span>
           </td>
         </tr>
@@ -68,7 +72,7 @@ function emailShell(body: string): string {
           <td style="background:#f7f9fb;border:1px solid #dde3ea;border-top:none;border-radius:0 0 12px 12px;padding:20px 36px;text-align:center;">
             <p style="margin:0;font-size:12px;color:#8a95a3;line-height:1.7;">
               This link is <strong>unique to you</strong> — do not forward or share it.<br/>
-              &copy; WorkflowSign &mdash; Secure Document Signatures
+              &copy; SOS Children&rsquo;s Villages Palestine &mdash; Secure E-Signatures
             </p>
           </td>
         </tr>
@@ -147,7 +151,7 @@ export async function sendSigningEmail(
     </p>`;
 
   await t.sendMail({
-    from: `"WorkflowSign" <${process.env.SMTP_USER}>`,
+    from: `"SOS Children's Villages Palestine" <${process.env.SMTP_USER}>`,
     to: `${recipient.teamName} <${recipient.email}>`,
     subject: subject || `Signature Request: ${doc.title}`,
     html: emailShell(body),
@@ -219,7 +223,7 @@ export async function sendReviewInviteEmail(
     </p>`;
 
   await t.sendMail({
-    from: `"WorkflowSign" <${process.env.SMTP_USER}>`,
+    from: `"SOS Children's Villages Palestine" <${process.env.SMTP_USER}>`,
     to: `${recipient.teamName} <${recipient.email}>`,
     subject: customSubject || `Review Required: ${doc.title}`,
     html: emailShell(body),
@@ -263,7 +267,7 @@ export async function sendPasswordResetEmail(
     </p>`;
 
   await t.sendMail({
-    from: `"WorkflowSign" <${process.env.SMTP_USER}>`,
+    from: `"SOS Children's Villages Palestine" <${process.env.SMTP_USER}>`,
     to: `${name} <${email}>`,
     subject: "Reset your WorkflowSign password",
     html: emailShell(body),
@@ -338,7 +342,7 @@ export async function sendSignUnlockEmail(
     </p>`;
 
   await t.sendMail({
-    from: `"WorkflowSign" <${process.env.SMTP_USER}>`,
+    from: `"SOS Children's Villages Palestine" <${process.env.SMTP_USER}>`,
     to: `${recipient.teamName} <${recipient.email}>`,
     subject: `Ready to Sign: ${doc.title}`,
     html: emailShell(body),
