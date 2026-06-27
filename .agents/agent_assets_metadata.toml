@@ -36,3 +36,9 @@ id = "lsmvJ4oeSurhyFoZ2Aa_v"
 uri = "file://codeis.md"
 type = "text"
 title = "WorkflowSign — Full Source Code Export with Bug Review"
+
+[[outputs]]
+id = "9S0bUEdhmgn7gl7ZFPxGx"
+uri = "file://nmt.md"
+type = "text"
+title = "WorkflowSign — System Overview"
