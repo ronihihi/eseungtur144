@@ -602,17 +602,16 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
             const rFields = allFields.filter((f) => f.recipientId === sr.id);
             const signedAt = sr.signedAt ? new Date(sr.signedAt) : now;
             const signerName = (sr.id === r.id ? fullName : sr.signerName) || sr.teamName || sr.email;
-            return rFields.map((f) => ({
-              fieldType: (f.fieldValue ? (f.fieldType || "signature") : "text") as "signature" | "initials" | "date" | "text",
-              fieldValue: f.fieldValue ?? "Electronically Signed",
-              signerName,
-              signedAt,
-              page: f.page,
-              x: f.x,
-              y: f.y,
-              width: f.width,
-              height: f.height,
-            }));
+            return rFields.flatMap((f) => {
+              const ft = (f.fieldType || "signature") as "signature" | "initials" | "date" | "text";
+              if (f.fieldValue) {
+                return [{ fieldType: ft, fieldValue: f.fieldValue, signerName, signedAt, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }];
+              }
+              if (ft === "signature" || ft === "initials") {
+                return [{ fieldType: "text" as const, fieldValue: "Electronically Signed", signerName, signedAt, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }];
+              }
+              return [];
+            });
           });
 
           const signerRecords: SignerRecord[] = signedRecipients.map((sr) => ({
@@ -701,17 +700,16 @@ router.get("/sign/:token/download", signingRateLimit, async (req: Request, res: 
       const recipientFields = allFields.filter((f) => f.recipientId === r.id);
       const signedAt = r.signedAt ? new Date(r.signedAt) : new Date();
       const signerName = r.signerName || r.teamName || r.email;
-      return recipientFields.map((f) => ({
-        fieldType: (f.fieldValue ? (f.fieldType || "signature") : "text") as "signature" | "initials" | "date" | "text",
-        fieldValue: f.fieldValue ?? "Electronically Signed",
-        signerName,
-        signedAt,
-        page: f.page,
-        x: f.x,
-        y: f.y,
-        width: f.width,
-        height: f.height,
-      }));
+      return recipientFields.flatMap((f) => {
+        const ft = (f.fieldType || "signature") as "signature" | "initials" | "date" | "text";
+        if (f.fieldValue) {
+          return [{ fieldType: ft, fieldValue: f.fieldValue, signerName, signedAt, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }];
+        }
+        if (ft === "signature" || ft === "initials") {
+          return [{ fieldType: "text" as const, fieldValue: "Electronically Signed", signerName, signedAt, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }];
+        }
+        return [];
+      });
     });
 
     const signerRecords: SignerRecord[] = signedRecipients.map((r) => ({

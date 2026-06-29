@@ -328,18 +328,18 @@ router.get("/documents/:id/download", requireAuth, async (req: Request, res: Res
       const signedAt = r.signedAt ? new Date(r.signedAt) : null;
       if (!signedAt) return [];
       const signerName = r.signerName || r.teamName || r.email;
-      return recipientFields.map((f) => ({
-        fieldType: (f.fieldValue ? (f.fieldType || "signature") : "text") as "signature" | "initials" | "date" | "text",
-        // When a recipient signed but no drawing was captured, stamp a text placeholder
-        fieldValue: f.fieldValue ?? "Electronically Signed",
-        signerName,
-        signedAt,
-        page: f.page,
-        x: f.x,
-        y: f.y,
-        width: f.width,
-        height: f.height,
-      }));
+      return recipientFields.flatMap((f) => {
+        const ft = (f.fieldType || "signature") as "signature" | "initials" | "date" | "text";
+        if (f.fieldValue) {
+          return [{ fieldType: ft, fieldValue: f.fieldValue, signerName, signedAt, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }];
+        }
+        // Only stamp placeholder for drawn fields where no image was captured.
+        // date/text fields with no value are intentionally blank — omit them.
+        if (ft === "signature" || ft === "initials") {
+          return [{ fieldType: "text" as const, fieldValue: "Electronically Signed", signerName, signedAt, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height }];
+        }
+        return [];
+      });
     });
 
     const signerRecords: SignerRecord[] = signedRecipients

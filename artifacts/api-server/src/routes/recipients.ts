@@ -58,6 +58,7 @@ router.post("/documents/:id/recipients", requireAuth, async (req: Request, res: 
           : null;
 
         if (existingRec) {
+          const emailChanged = existingRec.email !== r.email;
           await tx
             .update(recipientsTable)
             .set({
@@ -66,8 +67,22 @@ router.post("/documents/:id/recipients", requireAuth, async (req: Request, res: 
               signOrder: i + 1,
               requiresReview,
               requiresSignature,
-              reviewStatus: requiresReview ? (existingRec.reviewStatus ?? "pending") : null,
+              reviewStatus: requiresReview ? (emailChanged ? "pending" : (existingRec.reviewStatus ?? "pending")) : null,
               reviewChecklist: reviewChecklist as null,
+              // Rotate token and wipe all signing state when email changes so the
+              // old link holder cannot sign on behalf of the new assignee.
+              ...(emailChanged ? {
+                token: uuidv4(),
+                tokenExpiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+                status: "pending",
+                signedAt: null,
+                signerName: null,
+                ipAddress: null,
+                signatureData: null,
+                viewedAt: null,
+                reviewedAt: null,
+                reviewNote: null,
+              } : {}),
             })
             .where(eq(recipientsTable.id, existingRec.id));
         } else {
