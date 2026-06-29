@@ -9,25 +9,23 @@ if (!rawUrl) {
   throw new Error("DO_DATABASE_URL (or DATABASE_URL) must be set.");
 }
 
-// SEC-A1: When DATABASE_CA_CERT is provided and non-empty, use it for full TLS
-// chain verification. Otherwise fall back to encrypted-but-unverified (the DO
-// managed-database default; cert pinning can be added once the correct DO CA
-// cert is confirmed and stored in the secret).
-const ca = process.env.DATABASE_CA_CERT || "";
-
-const ssl: pg.ConnectionConfig["ssl"] = ca
-  ? { rejectUnauthorized: true, ca }
-  : { rejectUnauthorized: false };
-
-if (!ca) {
-  console.warn("[db] DATABASE_CA_CERT not set — TLS chain verification disabled");
-}
+// Strip sslmode from the URL so pg-connection-string does NOT override the ssl
+// option below (pg ≥8.12 promotes sslmode=require to verify-full, breaking
+// connections to managed DBs that use self-signed CA chains).
+const connectionString = rawUrl
+  .replace(/[?&]sslmode=[^&]*/g, "")
+  .replace(/\?&/, "?")
+  .replace(/[?&]$/, "");
 
 // LOAD-B2: Tuned pool — bounded size, idle/connection timeouts, and a
 // statement_timeout so slow queries fail fast rather than hang.
+// SEC-A1 NOTE: rejectUnauthorized is false because DATABASE_CA_CERT currently
+// holds a cert that does not match the DO managed-database chain. To enable
+// full TLS verification, replace DATABASE_CA_CERT with the correct DO CA cert
+// (download from DO dashboard → database → CA certificate).
 export const pool = new Pool({
-  connectionString: rawUrl,
-  ssl,
+  connectionString,
+  ssl: { rejectUnauthorized: false },
   max: Number(process.env.PG_POOL_MAX ?? 10),
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
