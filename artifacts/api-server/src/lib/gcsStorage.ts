@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import type { Response } from "express";
 
@@ -10,7 +11,6 @@ function getClient(): S3Client {
   if (!endpointRaw || !key || !secret) {
     throw new Error("DO_SPACES_ENDPOINT, DO_SPACES_KEY, and DO_SPACES_SECRET must be set");
   }
-  // Ensure endpoint is a full URL (add https:// if missing)
   const endpoint = endpointRaw.startsWith("http") ? endpointRaw : `https://${endpointRaw}`;
   return new S3Client({
     endpoint,
@@ -71,6 +71,13 @@ export class StorageFileNotFoundError extends Error {
   }
 }
 
+function isNotFoundError(err: unknown): boolean {
+  const e = err as { name?: string; Code?: string; $metadata?: { httpStatusCode?: number } };
+  const name = e.name ?? e.Code ?? "";
+  const httpStatus = e.$metadata?.httpStatusCode;
+  return name === "NoSuchKey" || name === "NotFound" || name === "404" || httpStatus === 404 || httpStatus === 403;
+}
+
 async function getBuffer(storagePath: string): Promise<Buffer> {
   const { bucket, key } = parsePath(storagePath);
   try {
@@ -81,12 +88,7 @@ async function getBuffer(storagePath: string): Promise<Buffer> {
     }
     return Buffer.concat(chunks);
   } catch (err: unknown) {
-    const e = err as { name?: string; Code?: string; $metadata?: { httpStatusCode?: number } };
-    const name = e.name ?? e.Code ?? "";
-    const httpStatus = e.$metadata?.httpStatusCode;
-    if (name === "NoSuchKey" || name === "NotFound" || name === "404" || httpStatus === 404 || httpStatus === 403) {
-      throw new StorageFileNotFoundError(storagePath);
-    }
+    if (isNotFoundError(err)) throw new StorageFileNotFoundError(storagePath);
     throw err;
   }
 }
@@ -95,16 +97,31 @@ export async function downloadFromGcs(storagePath: string): Promise<Buffer> {
   return getBuffer(storagePath);
 }
 
+// LOAD-B3: Stream the S3 object body directly to the Express response instead
+// of buffering the entire file in memory. A 50 MB PDF × N concurrent viewers
+// used to multiply RAM linearly; piping keeps RSS roughly flat.
 export async function streamFromGcs(
   storagePath: string,
   res: Response,
   contentType: string
 ): Promise<void> {
-  const buf = await getBuffer(storagePath);
-  res.set("Content-Type", contentType);
-  res.set("Content-Length", String(buf.byteLength));
-  res.set("Cache-Control", "private, max-age=300");
-  res.send(buf);
+  const { bucket, key } = parsePath(storagePath);
+  try {
+    const result = await getClient().send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    res.set("Content-Type", contentType);
+    if (result.ContentLength) res.set("Content-Length", String(result.ContentLength));
+    res.set("Cache-Control", "private, max-age=300");
+    await new Promise<void>((resolve, reject) => {
+      const body = result.Body as Readable;
+      body.pipe(res);
+      res.on("finish", resolve);
+      res.on("error", reject);
+      body.on("error", reject);
+    });
+  } catch (err: unknown) {
+    if (isNotFoundError(err)) throw new StorageFileNotFoundError(storagePath);
+    throw err;
+  }
 }
 
 export async function deleteFromGcs(storagePath: string): Promise<void> {

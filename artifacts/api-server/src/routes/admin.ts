@@ -110,8 +110,8 @@ router.post("/admin/users", requireAdmin, async (req: Request, res: Response) =>
 router.post("/admin/users/:id/reset-password", requireAdmin, async (req: Request, res: Response) => {
   const id = req.params.id as string;
   const { password } = req.body as { password?: string };
-  if (!password || password.length < 6) {
-    res.status(400).json({ error: "Password must be at least 6 characters" });
+  if (!password || password.length < 8) {
+    res.status(400).json({ error: "Password must be at least 8 characters" });
     return;
   }
   try {

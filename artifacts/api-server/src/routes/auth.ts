@@ -57,7 +57,7 @@ router.post("/auth/register", authRateLimit, async (req: Request, res: Response)
   try {
     const parsed = RegisterBody.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: "All fields are required and password must be at least 6 characters" });
+      res.status(400).json({ error: "All fields are required and password must be at least 8 characters" });
       return;
     }
     const { name, password } = parsed.data;
@@ -69,13 +69,15 @@ router.post("/auth/register", authRateLimit, async (req: Request, res: Response)
       return;
     }
 
-    // SEC-6: First-user admin bootstrap — require BOOTSTRAP_ADMIN_TOKEN when set in env.
+    // SEC-A2: First-user admin bootstrap — fail closed. Without BOOTSTRAP_ADMIN_TOKEN
+    // the first registrant becomes a plain "user". Admin role requires the env token
+    // to be set AND the caller to supply the matching value in the request body.
     const firstUser = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
     let role = "user";
     if (firstUser.length === 0) {
       const bootstrapToken = process.env.BOOTSTRAP_ADMIN_TOKEN;
       const provided = (req.body as { bootstrapToken?: string }).bootstrapToken;
-      if (!bootstrapToken || provided === bootstrapToken) {
+      if (bootstrapToken && provided === bootstrapToken) {
         role = "admin";
       }
     }
@@ -322,8 +324,8 @@ router.put("/auth/change-password", async (req: Request, res: Response) => {
     return;
   }
   const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
-  if (!newPassword || newPassword.length < 6) {
-    res.status(400).json({ error: "New password must be at least 6 characters" });
+  if (!newPassword || newPassword.length < 8) {
+    res.status(400).json({ error: "New password must be at least 8 characters" });
     return;
   }
   try {
@@ -398,8 +400,8 @@ router.post("/auth/forgot-password", authRateLimit, async (req: Request, res: Re
 router.post("/auth/reset-password", authRateLimit, async (req: Request, res: Response) => {
   const { token, password } = req.body as { token?: string; password?: string };
 
-  if (!token || !password || password.length < 6) {
-    res.status(400).json({ error: "A valid token and a password of at least 6 characters are required" });
+  if (!token || !password || password.length < 8) {
+    res.status(400).json({ error: "A valid token and a password of at least 8 characters are required" });
     return;
   }
 

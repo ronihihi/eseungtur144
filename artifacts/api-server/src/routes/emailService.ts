@@ -19,6 +19,8 @@ let _transporter: nodemailer.Transporter | null = null;
 function getTransporter(): nodemailer.Transporter | null {
   if (!smtpConfigured()) return null;
   if (!_transporter) {
+    // STAB-C3: Add SMTP timeouts so a hung mail server never stalls the request.
+    // Use connection pooling to reuse SMTP connections for multi-recipient sends.
     _transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || "smtp.gmail.com",
       port: parseInt(process.env.SMTP_PORT || "587"),
@@ -27,6 +29,11 @@ function getTransporter(): nodemailer.Transporter | null {
         user: process.env.SMTP_USER || "",
         pass: process.env.SMTP_PASS || "",
       },
+      pool: true,
+      maxConnections: 3,
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
     });
   }
   return _transporter;

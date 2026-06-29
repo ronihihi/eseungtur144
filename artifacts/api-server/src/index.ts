@@ -28,6 +28,12 @@ const server = app.listen(port, host, () => {
   );
 });
 
+// LOAD-B6: Set HTTP server timeouts to protect against slow-client attacks.
+// keepAliveTimeout must exceed the DO load-balancer idle timeout (~60 s).
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;
+server.requestTimeout = 30_000;
+
 server.on("error", (error) => {
   logger.error(
     {
@@ -62,3 +68,13 @@ const shutdown = (signal: string) => {
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
+
+// STAB-C1: Catch unhandled rejections/exceptions so background task crashes
+// are logged via pino and the process exits cleanly (letting the platform restart).
+process.on("unhandledRejection", (reason) => {
+  logger.error({ reason }, "unhandledRejection");
+});
+process.on("uncaughtException", (err) => {
+  logger.fatal({ err }, "uncaughtException");
+  shutdown("uncaughtException");
+});

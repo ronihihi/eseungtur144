@@ -35,3 +35,13 @@ export const remindRateLimit = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many reminder requests — please try again later" },
 });
+
+// LOAD-B5: Limit on-demand PDF generation — it is CPU-bound and can saturate
+// the event loop. 30 downloads per 10 minutes per IP is generous for normal use.
+export const downloadRateLimit = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many download requests — please try again in a few minutes" },
+});

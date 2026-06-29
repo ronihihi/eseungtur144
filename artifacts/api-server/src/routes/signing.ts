@@ -421,6 +421,23 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
 
     const { fullName, signatureData, fieldValues } = parsed.data;
 
+    // SEC-A8: Cap fullName and fieldValues to bound DB write size.
+    if (fullName.length > 200) {
+      res.status(400).json({ error: "Name is too long (max 200 characters)" });
+      return;
+    }
+    const fieldValueEntries = Object.entries(fieldValues ?? {});
+    if (fieldValueEntries.length > 50) {
+      res.status(400).json({ error: "Too many field values" });
+      return;
+    }
+    for (const [, v] of fieldValueEntries) {
+      if (typeof v === "string" && v.length > 2000) {
+        res.status(400).json({ error: "A field value is too long (max 2000 characters)" });
+        return;
+      }
+    }
+
     // HARD-4: Cap signature payload to prevent oversized writes.
     if (signatureData && signatureData.length > 600_000) {
       res.status(400).json({ error: "Signature data is too large" });

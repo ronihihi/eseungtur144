@@ -9,9 +9,14 @@ import { db, documentsTable, recipientsTable, signatureFieldsTable } from "@work
 import type { Request, Response } from "express";
 import { buildSignedPdf, SignerRecord, ReviewerRecord, DocMeta } from "./pdfSigner.js";
 import { uploadToGcs, downloadFromGcs, streamFromGcs, isGcsPath, deleteFromGcs, StorageFileNotFoundError } from "../lib/gcsStorage.js";
-import { uploadRateLimit } from "../lib/rateLimiters.js";
+import { uploadRateLimit, downloadRateLimit } from "../lib/rateLimiters.js";
 
 const router: IRouter = Router();
+
+// LOAD-B4: Concurrency guard — each in-flight upload pins up to 50 MB of heap.
+// Reject early rather than OOM the instance under bulk concurrent uploads.
+let _activeUploads = 0;
+const MAX_CONCURRENT_UPLOADS = 3;
 
 function requireAuth(req: Request, res: Response, next: () => void) {
   if (!req.session.userId) {
@@ -81,6 +86,11 @@ const multerUpload = multer({
 });
 
 router.post("/documents", requireAuth, uploadRateLimit, multerUpload.single("file"), async (req: Request, res: Response) => {
+  if (_activeUploads >= MAX_CONCURRENT_UPLOADS) {
+    res.status(429).json({ error: "Too many uploads in progress — please try again in a moment" });
+    return;
+  }
+  _activeUploads++;
   try {
     const uploadedFile = req.file;
     const { title, signing_order } = req.body as { title?: string; signing_order?: string };
@@ -119,6 +129,8 @@ router.post("/documents", requireAuth, uploadRateLimit, multerUpload.single("fil
   } catch (err) {
     req.log.error({ err }, "upload document error");
     res.status(500).json({ error: "Internal server error" });
+  } finally {
+    _activeUploads--;
   }
 });
 
@@ -281,7 +293,7 @@ router.put("/documents/:id/fields", requireAuth, async (req: Request, res: Respo
   }
 });
 
-router.get("/documents/:id/download", requireAuth, async (req: Request, res: Response) => {
+router.get("/documents/:id/download", requireAuth, downloadRateLimit, async (req: Request, res: Response) => {
   const id = req.params.id as string;
   try {
     const docs = await db
@@ -383,6 +395,17 @@ router.get("/documents/:id/download", requireAuth, async (req: Request, res: Res
     res.set("Content-Disposition", `attachment; filename="${safeName}"`);
     res.set("Content-Length", String(pdfBuf.byteLength));
     res.send(pdfBuf);
+
+    // STAB-C2 / LOAD-B5: Self-heal — persist the regenerated PDF so subsequent
+    // downloads use the fast sealed-path and don't re-run pdf-lib every time.
+    if (!doc.sealedPdfPath && doc.status === "completed") {
+      const sealedObjectName = `sealed/${doc.id}.pdf`;
+      uploadToGcs(pdfBuf, sealedObjectName, "application/pdf")
+        .then((sealedPath) =>
+          db.update(documentsTable).set({ sealedPdfPath: sealedPath }).where(eq(documentsTable.id, id))
+        )
+        .catch((err) => req.log.warn({ err }, "self-heal sealed PDF upload failed"));
+    }
   } catch (err) {
     if (err instanceof StorageFileNotFoundError) {
       req.log.warn({ err }, "document file not found in storage");

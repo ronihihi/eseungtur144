@@ -44,10 +44,14 @@ app.use(
     logger,
     serializers: {
       req(req) {
+        // SEC-A9: Redact signing/review tokens from request logs so the raw
+        // secret never appears in structured log output.
+        const raw = req.url?.split("?")[0] ?? "";
+        const url = raw.replace(/\/(sign|review)\/([^/?]+)/, "/$1/[token]");
         return {
           id: req.id,
           method: req.method,
-          url: req.url?.split("?")[0],
+          url,
         };
       },
 
@@ -197,16 +201,19 @@ app.use(
 
 // ── Request body limits ──────────────────────────────────────────────────────
 
+// STAB-C5: Raise the global JSON body limit to 5 MB so a near-max signature
+// payload (≤600 KB image + name + field map) is never rejected by the body
+// parser before reaching the route-level 600 KB cap.
 app.use(
   express.json({
-    limit: "1mb",
+    limit: "5mb",
   }),
 );
 
 app.use(
   express.urlencoded({
     extended: true,
-    limit: "1mb",
+    limit: "5mb",
   }),
 );
 

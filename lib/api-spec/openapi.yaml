@@ -704,7 +704,7 @@ components:
           format: email
         password:
           type: string
-          minLength: 6
+          minLength: 8
       required:
         - name
         - email
@@ -1142,6 +1142,7 @@ components:
       properties:
         fullName:
           type: string
+          maxLength: 200
         signatureData:
           type: string
           nullable: true
@@ -1151,6 +1152,7 @@ components:
           description: Map of fieldId to value for text and date fields
           additionalProperties:
             type: string
+            maxLength: 2000
       required:
         - fullName
 
@@ -1207,7 +1209,7 @@ components:
           format: email
         password:
           type: string
-          minLength: 6
+          minLength: 8
         role:
           type: string
           enum: [admin, user, auditor]

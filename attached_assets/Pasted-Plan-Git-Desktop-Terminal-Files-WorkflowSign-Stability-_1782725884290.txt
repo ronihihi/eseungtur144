@@ -1,0 +1,233 @@
+Plan
+
+Git
+
+Desktop
+
+Terminal
+
+Files
+
+
+
+WorkflowSign — Stability, Security & Scale Review + Remediation Plan
+Scope: Full read-only review of the production backend (artifacts/api-server), DB layer (lib/db), deployment config (.do/app.yaml, Dockerfile), and supporting libs. Focus: make the system stable, secure, and able to handle high load.
+
+Verdict: The codebase is in good shape on the basics — the prior security audit (REVIEW-REPORT.md) closed most P0/P1 auth issues, headers are hardened, queries are scoped to owners, inputs are largely validated. The remaining risk is concentrated in three areas: (1) horizontal-scale readiness (in-memory rate limiting, untuned DB pool, full-file buffering, non-durable background work), (2) a few residual security gaps (CA cert ignored, weak password floor, auto-admin bootstrap, unverified Azure token claims, plaintext reset tokens), and (3) operational stability (no global crash handlers, no server timeouts, no DB-aware health check).
+
+This document is the remediation plan. Nothing here has been implemented yet.
+
+How to read this
+Each finding has: ID · Severity · File(s) · Problem · Fix · Verification. Severities: P0 (do before/at scale, security-or-data-impacting), P1 (needed for real load), P2 (hardening), P3 (cleanup / hygiene).
+
+A. SECURITY
+SEC-A1 · P0 · DB CA certificate is provisioned but ignored
+File: lib/db/src/index.ts:30-36; .do/app.yaml (DATABASE_CA_CERT is set as a SECRET).
+
+The DO branch always uses ssl: { rejectUnauthorized: false }, so the connection is encrypted but the server certificate chain is never verified — a MITM on the DB path would not be detected. DATABASE_CA_CERT is already injected by the platform but the code path discards it.
+
+Fix: Prefer the CA cert whenever present, for all hosts:
+
+ts
+const ca = process.env.DATABASE_CA_CERT;
+export const pool = new Pool({
+  connectionString,
+  ssl: ca
+    ? { rejectUnauthorized: true, ca }
+    : { rejectUnauthorized: false },   // last-resort dev fallback only
+});
+if (!ca) logger.warn("DB TLS: chain verification DISABLED (no DATABASE_CA_CERT)");
+Verification: Boot with DATABASE_CA_CERT set → connects with rejectUnauthorized:true; deliberately corrupt the CA → connection fails (proves verification active).
+
+SEC-A2 · P0 · First registrant silently becomes admin when bootstrap token unset
+File: artifacts/api-server/src/routes/auth.ts:71-78; .do/app.yaml (no BOOTSTRAP_ADMIN_TOKEN).
+
+When the users table is empty and BOOTSTRAP_ADMIN_TOKEN is not configured, the condition if (!bootstrapToken || provided === bootstrapToken) makes the first self-registered account an admin. Production app.yaml does not set the token, so an attacker who reaches /api/auth/register before the legitimate owner gets admin.
+
+Fix: Require the token to grant admin — fail closed:
+
+ts
+let role = "user";
+if (firstUser.length === 0 && bootstrapToken && provided === bootstrapToken) {
+  role = "admin";
+}
+Set BOOTSTRAP_ADMIN_TOKEN as a secret in app.yaml, and document a one-time admin bootstrap. Verification: Empty DB + no token → first user is user; with token + matching body field → admin.
+
+SEC-A3 · P1 · Azure id_token claims are not verified
+File: artifacts/api-server/src/routes/auth.ts:40-43, 230-260.
+
+parseJwt() only base64-decodes the payload — no signature, iss, aud, exp, or nonce validation. The token is fetched server-to-server from Microsoft over TLS (authorization-code flow), so risk is reduced, but defense-in-depth requires validating at least aud === AZURE_CLIENT_ID, iss matches the tenant, and exp is in the future; add a nonce round-trip alongside the existing state.
+
+Fix: After token exchange, validate claims before trusting oid/email. Optionally verify signature against the Microsoft JWKS (https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys). Verification: Tamper a token's aud in a unit/integration stub → callback rejects.
+
+SEC-A4 · P1 · Weak password policy (min length 6)
+Files: lib/api-spec/openapi.yaml:705-711, 1205-1217; auth.ts change-password/reset (length < 6).
+
+Six characters is below current guidance. Raise the floor to ≥ 8 (ideally 12) and reject trivially weak/breached passwords. Update the OpenAPI schema, regenerate Zod (pnpm --filter @workspace/api-spec run codegen), and align the manual checks in auth.ts (change-password, reset-password) and admin.ts (reset-password). Verification: Registering with a 7-char password is rejected everywhere.
+
+SEC-A5 · P1 · Recipient token & password-reset token stored in plaintext
+Files: lib/db/src/schema/recipients.ts (token), schema/passwordResetTokens.ts (token); auth.ts reset flow; signing.ts token lookups.
+
+A read-only DB leak exposes every active signing link and reset link. Store a SHA-256 hash of the token in the DB and look up by hash (the raw token only lives in the URL/email). This is a schema + lookup change; weigh effort vs. the 90-day token TTL. At minimum, hash the password-reset token (small surface, clear win). Verification: DB row shows a hash; signing/reset still works end-to-end.
+
+SEC-A6 · P1 · Content-Security-Policy allows unsafe-inline + unsafe-eval
+File: artifacts/api-server/src/app.ts:84 (scriptSrc).
+
+Both directives substantially weaken XSS mitigation. Determine what actually needs them (likely pdf.js worker uses blob:/eval; Vite injects inline in dev only). Target: remove unsafe-eval, and replace unsafe-inline with per-response nonces (or hashes) for the few inline scripts the built SPA emits. If pdf.js genuinely requires eval, scope it as narrowly as possible. Verification: App + PDF viewer + signing pad still function with tightened CSP; browser console shows no CSP violations.
+
+SEC-A7 · P2 · No brute-force lockout beyond per-IP rate limit
+File: auth.ts login; lib/rateLimiters.ts.
+
+authRateLimit is 30 req / 15 min per IP. Distributed credential stuffing across many IPs is not slowed. Add per-account failure tracking (e.g., temporary lockout / exponential backoff keyed on email) and consider CAPTCHA after N failures. Verification: N failed logins for one account triggers backoff regardless of source IP.
+
+SEC-A8 · P2 · Unbounded fullName / fieldValues on signature submission
+Files: lib/api-spec/openapi.yaml:1140-1152; generated SubmitSignatureBody; signing.ts:421.
+
+fullName has no max length and fieldValues has no key-count or per-value cap (only the global 1 MB body + 600 KB signature cap apply). Add maxLength to fullName (e.g. 200), cap fieldValues entry count and per-value length in the route handler before writing. Verification: Oversized name / 10k field map is rejected with 400.
+
+SEC-A9 · P2 · Signing token leaks into request logs
+File: artifacts/api-server/src/app.ts:48-58 (pino-http serializer keeps req.url path).
+
+The serializer strips the query string but keeps the path, so /api/sign/<token>... logs the secret token at info level. Redact or hash the token segment for /sign/:token* and /review/:token* request logs. Verification: Log lines for signing routes show a redacted/hashed token, never the raw value.
+
+B. HIGH LOAD / SCALABILITY
+LOAD-B1 · P0 (blocker for autoscale) · Rate limiters use in-memory store
+File: artifacts/api-server/src/lib/rateLimiters.ts (default express-rate-limit store).
+
+State lives in a single process. The moment instance_count > 1 (the whole point of "highly loaded"), limits are per-instance and trivially bypassed; counters also reset on deploy/restart. Either keep instance_count: 1 (documented constraint) or move to a shared store before scaling out.
+
+Fix: Add a shared store — rate-limit-redis backed by a managed Redis, or @acpr/rate-limit-postgresql reusing the existing PG pool. Wire it into all four limiters. Verification: Run two instances locally behind a proxy; confirm a client hitting both instances shares one counter.
+
+LOAD-B2 · P0 · Postgres pool is untuned (no max / timeouts / statement_timeout)
+File: lib/db/src/index.ts:28-36.
+
+pg.Pool defaults to max: 10 with no connectionTimeoutMillis, idleTimeoutMillis, or per-query statement_timeout. connect-pg-simple shares the same pool, so session reads/writes compete with app queries. Under load this causes pool exhaustion and requests that hang indefinitely on a slow/blocked query.
+
+Fix: Size the pool to the managed DB's connection cap (leave headroom for sessions and migrations), and add timeouts:
+
+ts
+new Pool({
+  connectionString, ssl,
+  max: Number(process.env.PG_POOL_MAX ?? 10),
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+  statement_timeout: 15_000,       // server-side query cap
+  query_timeout: 15_000,
+});
+Consider a separate small pool for the session store so auth traffic can't starve it. Verification: Load test shows requests fail fast (timeout) instead of hanging; pool size matches DB plan limits.
+
+LOAD-B3 · P1 · File downloads buffer the entire object in memory
+Files: artifacts/api-server/src/lib/gcsStorage.ts:71-110 (getBuffer, streamFromGcs); used by documents.ts and signing.ts /file routes.
+
+getBuffer concatenates the whole S3 object into a Buffer, and streamFromGcs then res.send(buf). A 50 MB PDF × N concurrent viewers multiplies RAM linearly — OOM on a basic-s instance. PDFs are user-facing and viewed often (inline viewer + signing page).
+
+Fix: True streaming for the view/serve path — pipe the S3 GetObject body straight to the response:
+
+ts
+const { Body, ContentLength } = await client.send(new GetObjectCommand({ Bucket, Key }));
+res.set("Content-Type", contentType);
+if (ContentLength) res.set("Content-Length", String(ContentLength));
+(Body as Readable).pipe(res);
+Keep buffering only where bytes are genuinely needed in memory (pdf-lib sealing). Verification: Serving a 50 MB PDF to many clients keeps RSS roughly flat instead of scaling with concurrency.
+
+LOAD-B4 · P1 · Upload path holds full file in memory (memoryStorage, 50 MB)
+File: artifacts/api-server/src/routes/documents.ts:64-71 (multer.memoryStorage).
+
+Each in-flight upload pins up to 50 MB of heap; concurrent uploads can OOM the instance. uploadRateLimit (20/hr/IP) limits one IP but not aggregate concurrency.
+
+Fix: Either stream the upload directly to Spaces using @aws-sdk/lib-storage Upload (already a dependency) with multer disk/stream storage, or lower the max size and add a concurrency guard. Validate the %PDF- magic bytes on the first chunk. Verification: Many simultaneous large uploads do not spike heap proportionally.
+
+LOAD-B5 · P1 · On-demand PDF generation is CPU-heavy and under-protected
+Files: documents.ts:/documents/:id/download; signing.ts:/sign/:token/download; pdfSigner.ts.
+
+buildSignedPdf (pdf-lib + fontkit, embeds Arabic fonts, draws audit page) is CPU-bound and runs on the event loop. The authenticated /documents/:id/download has no dedicated rate limit; if the sealed PDF is missing it regenerates on every click. Many concurrent downloads can saturate CPU and stall all other requests.
+
+Fix: (a) Always prefer the pre-sealed object (already done) and ensure sealing is durable (see STAB-C2); (b) add a download-specific rate limit; (c) for heavy generation, offload to a worker thread (node:worker_threads) or a small job queue so the main loop stays responsive. (d) Cache regenerated output to the sealed path so repeat downloads are cheap. Verification: Under concurrent downloads, p99 latency of unrelated endpoints stays low.
+
+LOAD-B6 · P1 · No HTTP server timeouts (slowloris / stuck sockets)
+File: artifacts/api-server/src/index.ts:21 (app.listen).
+
+server.headersTimeout, requestTimeout, and keepAliveTimeout are unset, leaving the app vulnerable to slow-client resource exhaustion and to sockets stuck behind the proxy.
+
+Fix:
+
+ts
+server.keepAliveTimeout = 65_000;   // > DO LB idle (typically 60s)
+server.headersTimeout   = 66_000;   // must exceed keepAliveTimeout
+server.requestTimeout   = 30_000;
+Verification: A deliberately slow request is terminated at the timeout.
+
+LOAD-B7 · P2 · Single instance / no HA; health check ignores dependencies
+Files: .do/app.yaml (instance_count: 1); app.ts:/health, routes/health.ts.
+
+One instance means any crash or deploy is downtime. The /health check returns 200 without verifying DB connectivity, so a broken-DB instance still looks healthy and keeps receiving traffic.
+
+Fix: After the scale-out blockers (LOAD-B1/B2) are resolved, raise instance_count to ≥ 2 and add a readiness-style check that does a fast SELECT 1 (with the new statement_timeout) while keeping /health liveness cheap. Don't let a transient DB blip flap liveness — separate liveness (process up) from readiness (can serve). Verification: Killing the DB marks instances not-ready; rolling deploy has zero downtime.
+
+C. STABILITY / OPERATIONS
+STAB-C1 · P0 · No global unhandledRejection / uncaughtException handlers
+File: artifacts/api-server/src/index.ts.
+
+There are signal handlers but no process-level handlers for unhandled promise rejections or uncaught exceptions. On Node 24 an unhandled rejection can terminate the process with no structured log, and a stray throw in a background task (e.g., the setImmediate sealing) can take the instance down.
+
+Fix: Register handlers that log via pino and exit cleanly (let the platform restart):
+
+ts
+process.on("unhandledRejection", (reason) => { logger.error({ reason }, "unhandledRejection"); });
+process.on("uncaughtException", (err) => { logger.fatal({ err }, "uncaughtException"); shutdown("uncaughtException"); });
+Verification: Force a rejection in a test build → it is logged, process behaves predictably.
+
+STAB-C2 · P1 · Background PDF sealing is not durable
+File: artifacts/api-server/src/routes/signing.ts:520-575 (setImmediate(... buildSignedPdf ... uploadToGcs ...)).
+
+Sealing runs fire-and-forget after the response. If the instance is recycled (deploy, autoscale scale-in, crash) between the response and the upload, sealedPdfPath is never set: the document is "completed" but has no sealed artifact, so every download regenerates on-demand forever (perf cost + non-determinism). There is no retry.
+
+Fix: Make sealing durable: a sealed_status column (pending|done|failed) plus a small reconciler (cron/queue) that seals any completed-but-unsealed document and retries failures. Minimum viable: on download, if regeneration succeeds, persist it to the sealed path so subsequent downloads are cheap (idempotent self-heal). Verification: Kill the instance right after completion → a later job seals the doc; downloads then use the sealed object.
+
+STAB-C3 · P1 · SMTP sends have no timeouts/pooling and block multi-recipient requests
+Files: artifacts/api-server/src/routes/emailService.ts:23-37; recipients.ts /send, /remind-all.
+
+nodemailer.createTransport sets no connectionTimeout/socketTimeout and no pool. /send and /remind-all await each sendMail sequentially inside the request, so a slow/hanging SMTP server stalls the whole request (up to 7 recipients) and can exhaust request capacity.
+
+Fix: Add pool: true, maxConnections, connectionTimeout, greetingTimeout, socketTimeout to the transport. Decouple sending from the request — enqueue emails and send in the background (with the new crash handlers + retry), returning 202-style "queued" semantics. At minimum, bound each send with a timeout and Promise.allSettled. Verification: A blackholed SMTP host no longer hangs /send; failures are logged per-recipient and the request returns promptly.
+
+STAB-C4 · P2 · No DB foreign keys; user deletion orphans data
+Files: all lib/db/src/schema/*.ts (no references()); admin.ts DELETE /admin/users/:id.
+
+Tables use bare text IDs with no FK constraints. Deleting a user does not remove or reassign their documents/recipients/fields/events, leaving orphaned rows (and documents that can never be managed). Manual cascade exists only for document deletion.
+
+Fix: Add FK constraints with explicit ON DELETE behavior (or application-level cascade + a guard preventing deletion of users who still own documents). Decide product behavior: block deletion, reassign ownership, or cascade. Verification: Deleting a user with documents either fails with a clear error or cleans up all dependents (and GCS objects) atomically.
+
+STAB-C5 · P2 · express.json 1 MB global limit vs 600 KB signature cap (thin headroom)
+Files: app.ts:174-182; signing.ts:421.
+
+Carried over from REVIEW-REPORT.md (NF-2): a max-size signature plus name + field map can approach the 1 MB body limit and be rejected by the body parser before the route's own 600 KB check, surfacing as an opaque 413.
+
+Fix: Apply a route-level express.json({ limit: "5mb" }) on POST /sign/:token; the internal cap remains the real ceiling. Verification: A near-max signature submission succeeds; an over-cap one returns the intended 400, never a parser 413.
+
+D. CLEANUP / HYGIENE (P3)
+D1 — Remove committed DB dumps. new.sql, new.sql.backup, new.sql.bak, new.sql.tar.gz (~0.6 MB each) are in the repo. These bloat the repo and may contain real/PII data. Remove from the working tree and purge from history if sensitive; add to .gitignore. (Plan only — destructive history rewrite needs explicit owner sign-off.)
+D2 — Drop LibreOffice from the image. Dockerfile installs libreoffice for DOCX→PDF conversion, but documents.ts now accepts only .pdf. Removing it shrinks the image, speeds cold starts, and reduces attack surface. Confirm no remaining code path shells out to soffice first.
+D3 — Fix docs/code drift. replit.md / INFRASTRUCTURE.md describe GCS + DOCX conversion; the running code uses DO Spaces (S3 SDK) and PDF-only uploads. Update docs (or the storage naming, which still says gcs:///makeGcsPath).
+D4 — CLN-1 from prior report. review.tsx:55,82 still uses raw fetch() where generated hooks exist — align for consistency.
+D5 — Add automated tests + lint. No test or lint script exists anywhere. Add at least: auth (session fixation, bootstrap-admin), signing state machine (computeNextStep), and ownership-scoping tests; wire eslint/oxlint + a CI check.
+Recommended execution order (phased)
+Phase 1 — Security & stability quick wins (low risk, high value) SEC-A1 (CA cert), SEC-A2 (admin bootstrap), STAB-C1 (crash handlers), LOAD-B6 (server timeouts), STAB-C5 (body-limit headroom), SEC-A8 (input caps), SEC-A9 (token log redaction). Mostly small, localized edits; no schema or infra changes.
+
+Phase 2 — Make a single instance robust under load LOAD-B2 (pool tuning + timeouts), LOAD-B3 (stream downloads), LOAD-B4 (stream uploads), LOAD-B5 (download rate limit + sealed-path self-heal), STAB-C3 (SMTP timeouts + background send), STAB-C2 (durable sealing).
+
+Phase 3 — Scale out & deeper hardening LOAD-B1 (shared rate-limit store), LOAD-B7 (instance_count ≥ 2 + readiness check), SEC-A3 (Azure claim validation), SEC-A4 (password policy), SEC-A5 (token hashing), SEC-A6 (CSP tightening), SEC-A7 (account lockout), STAB-C4 (foreign keys).
+
+Phase 4 — Hygiene D1–D5.
+
+Testing strategy (per phase)
+Static: pnpm run typecheck and pnpm run build must stay green after every change; regenerate API artifacts after any OpenAPI edit (pnpm --filter @workspace/api-spec run codegen).
+Unit/integration (to be added, D5): auth flows (fixation, bootstrap, lockout), computeNextStep matrix, ownership scoping (cross-tenant 404s), input-cap rejections, CSV formula-injection escaping, token hashing lookups.
+Load: k6/autocannon against /api/documents/:id/file (download streaming RAM), /sign/:token (rate-limit correctness across instances), and /documents/:id/download (CPU under concurrency). Watch RSS, event-loop lag, PG pool saturation.
+Resilience drills: blackhole SMTP; kill instance mid-seal; corrupt CA; saturate DB pool — confirm fail-fast + self-heal behaviors described above.
+Security spot-checks: verify CSP has no unsafe-eval (Phase 3), tokens redacted in logs, CA verification active, weak passwords rejected.
+Notes / open questions for the owner
+Is the production target genuinely multi-instance (autoscale), or is a single well-tuned instance acceptable? This decides whether LOAD-B1 (shared rate-limit store) is mandatory now or deferrable.
+Is a managed Redis available/desired (best for rate limiting + future queue), or should we stay PG-only?
+Do the new.sql* dumps contain real user data? If so, history purge (D1) becomes higher priority and needs coordination.
+Confirm DOCX upload is truly retired so LibreOffice can be removed (D2).

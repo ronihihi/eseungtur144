@@ -17,7 +17,7 @@ export const HealthCheckResponse = zod.object({
 /**
  * @summary Register a new user
  */
-export const registerBodyPasswordMin = 6;
+export const registerBodyPasswordMin = 8;
 
 export const RegisterBody = zod.object({
   name: zod.string(),
@@ -405,7 +405,7 @@ export const SubmitSignatureParams = zod.object({
 });
 
 export const SubmitSignatureBody = zod.object({
-  fullName: zod.string(),
+  fullName: zod.string().max(200),
   signatureData: zod
     .string()
     .nullish()
@@ -413,7 +413,7 @@ export const SubmitSignatureBody = zod.object({
       "Base64-encoded signature image (required when signing signature\/initials fields)",
     ),
   fieldValues: zod
-    .record(zod.string(), zod.string())
+    .record(zod.string(), zod.string().max(2000))
     .optional()
     .describe("Map of fieldId to value for text and date fields"),
 });
@@ -465,7 +465,7 @@ export const ListAdminUsersResponse = zod.object({
 /**
  * @summary Create a user (admin only)
  */
-export const createAdminUserBodyPasswordMin = 6;
+export const createAdminUserBodyPasswordMin = 8;
 
 export const CreateAdminUserBody = zod.object({
   name: zod.string(),
