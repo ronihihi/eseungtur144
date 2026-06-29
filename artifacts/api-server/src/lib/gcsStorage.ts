@@ -81,8 +81,10 @@ async function getBuffer(storagePath: string): Promise<Buffer> {
     }
     return Buffer.concat(chunks);
   } catch (err: unknown) {
-    const name = (err as { name?: string; Code?: string }).name ?? (err as { Code?: string }).Code ?? "";
-    if (name === "NoSuchKey" || name === "NotFound" || name === "404") {
+    const e = err as { name?: string; Code?: string; $metadata?: { httpStatusCode?: number } };
+    const name = e.name ?? e.Code ?? "";
+    const httpStatus = e.$metadata?.httpStatusCode;
+    if (name === "NoSuchKey" || name === "NotFound" || name === "404" || httpStatus === 404 || httpStatus === 403) {
       throw new StorageFileNotFoundError(storagePath);
     }
     throw err;

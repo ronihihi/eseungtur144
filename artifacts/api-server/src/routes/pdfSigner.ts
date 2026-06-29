@@ -3,6 +3,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { createRequire } from "module";
 import { readFileSync } from "fs";
 import { createHash } from "crypto";
+import { StorageFileNotFoundError } from "../lib/gcsStorage.js";
 
 // createRequire bound to this module so require.resolve uses artifacts/api-server
 // as the lookup root — works in both tsx (dev) and the esbuild ESM bundle (prod).
@@ -506,7 +507,20 @@ export async function buildSignedPdf(
   entries: FieldEntry[],
   meta?: { doc: DocMeta; signers: SignerRecord[]; reviewers?: ReviewerRecord[] }
 ): Promise<Uint8Array> {
-  const pdfBytes = Buffer.isBuffer(source) ? source : readFileSync(source);
+  let pdfBytes: Buffer;
+  if (Buffer.isBuffer(source)) {
+    pdfBytes = source;
+  } else {
+    try {
+      pdfBytes = readFileSync(source);
+    } catch (err: unknown) {
+      const e = err as { code?: string };
+      if (e.code === "ENOENT") {
+        throw new StorageFileNotFoundError(source);
+      }
+      throw err;
+    }
+  }
   const pdfDoc = await PDFDocument.load(pdfBytes);
   pdfDoc.registerFontkit(fontkit);
   const pages = pdfDoc.getPages();
