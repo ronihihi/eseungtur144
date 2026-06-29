@@ -13,6 +13,7 @@ export const documentEventsTable = pgTable("document_events", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => ({
   documentIdIdx: index("doc_events_document_id_idx").on(t.documentId),
+  documentIdCreatedAtIdx: index("doc_events_document_id_created_at_idx").on(t.documentId, t.createdAt),
 }));
 
 export type DocumentEvent = typeof documentEventsTable.$inferSelect;

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -17,7 +17,9 @@ export const documentsTable = pgTable("documents", {
   sealedPdfHash: text("sealed_pdf_hash"),
   emailSubject: text("email_subject"),
   emailMessage: text("email_message"),
-});
+}, (t) => ({
+  uploadedByCreatedAtIdx: index("documents_uploaded_by_created_at_idx").on(t.uploadedBy, t.createdAt),
+}));
 
 export const insertDocumentSchema = createInsertSchema(documentsTable).omit({
   createdAt: true,

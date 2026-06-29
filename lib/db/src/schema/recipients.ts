@@ -25,6 +25,7 @@ export const recipientsTable = pgTable("recipients", {
   tokenExpiresAt: timestamp("token_expires_at"),
 }, (t) => ({
   documentIdIdx: index("recipients_document_id_idx").on(t.documentId),
+  emailIdx: index("recipients_email_idx").on(t.email),
 }));
 
 export const insertRecipientSchema = createInsertSchema(recipientsTable).omit({

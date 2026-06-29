@@ -26,9 +26,9 @@ if (!sessionSecret) {
   process.exit(1);
 }
 
-if (!databaseUrl) {
+if (!databaseUrl && !process.env.DO_DATABASE_URL) {
   logger.error(
-    "DATABASE_URL environment variable is not set — refusing to start",
+    "Neither DATABASE_URL nor DO_DATABASE_URL is set — refusing to start",
   );
   process.exit(1);
 }

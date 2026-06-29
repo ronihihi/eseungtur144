@@ -472,81 +472,93 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
     const ip = req.ip ?? req.socket.remoteAddress ?? "";
     const ua = req.headers["user-agent"] ?? null;
 
-    await db
-      .update(recipientsTable)
-      .set({
-        status: "signed",
-        signedAt: new Date(),
-        signerName: fullName,
-        ipAddress: ip,
-        signatureData: signatureData ?? null,
-      })
-      .where(eq(recipientsTable.token, token));
-
-    await insertEvent({
-      documentId: r.documentId,
-      recipientId: r.id,
-      eventType: "signed",
-      actorName: fullName,
-      actorEmail: r.email,
-      ipAddress: ip,
-      userAgent: ua,
-    });
-
+    // Fetch fields before the transaction (read-only, doesn't need to be atomic with writes)
     const recipientFields = await db
       .select()
       .from(signatureFieldsTable)
       .where(eq(signatureFieldsTable.recipientId, r.id));
 
-    for (const field of recipientFields) {
-      let value: string | null = null;
-      if (field.fieldType === "signature" || field.fieldType === "initials") {
-        value = signatureData ?? null;
-      } else if (fieldValues && fieldValues[field.id] !== undefined) {
-        value = fieldValues[field.id];
-      }
-      if (value !== null) {
-        await db
-          .update(signatureFieldsTable)
-          .set({ fieldValue: value })
-          .where(eq(signatureFieldsTable.id, field.id));
-      }
-    }
+    const now = new Date();
+    let allDone = false;
 
+    // Wrap all DB mutations atomically so a crash mid-way can't leave partial state
+    // (e.g. recipient marked signed but document still shows "in_progress").
+    await db.transaction(async (tx) => {
+      await tx
+        .update(recipientsTable)
+        .set({
+          status: "signed",
+          signedAt: now,
+          signerName: fullName,
+          ipAddress: ip,
+          signatureData: signatureData ?? null,
+        })
+        .where(eq(recipientsTable.token, token));
+
+      await tx.insert(documentEventsTable).values({
+        id: uuidv4(),
+        documentId: r.documentId,
+        recipientId: r.id,
+        eventType: "signed",
+        actorName: fullName,
+        actorEmail: r.email,
+        ipAddress: ip,
+        userAgent: ua,
+        createdAt: now,
+      });
+
+      for (const field of recipientFields) {
+        let value: string | null = null;
+        if (field.fieldType === "signature" || field.fieldType === "initials") {
+          value = signatureData ?? null;
+        } else if (fieldValues && fieldValues[field.id] !== undefined) {
+          value = fieldValues[field.id];
+        }
+        if (value !== null) {
+          await tx
+            .update(signatureFieldsTable)
+            .set({ fieldValue: value })
+            .where(eq(signatureFieldsTable.id, field.id));
+        }
+      }
+
+      // BUG-2: Re-count unsigned signers directly in DB so concurrent signers
+      // don't both read a stale snapshot and both miss the completion trigger.
+      const remaining = await tx
+        .select({ n: count() })
+        .from(recipientsTable)
+        .where(
+          and(
+            eq(recipientsTable.documentId, r.documentId),
+            eq(recipientsTable.requiresSignature, true),
+            ne(recipientsTable.status, "signed"),
+          )
+        );
+
+      allDone = Number(remaining[0].n) === 0;
+
+      if (allDone) {
+        await tx
+          .update(documentsTable)
+          .set({ status: "completed", completedAt: now })
+          .where(eq(documentsTable.id, r.documentId));
+
+        await tx.insert(documentEventsTable).values({
+          id: uuidv4(),
+          documentId: r.documentId,
+          eventType: "completed",
+          actorName: "System",
+          actorEmail: null,
+          createdAt: now,
+        });
+      }
+    });
+
+    // Fetch fresh recipient list after the transaction commits (for email/PDF background tasks)
     const freshRecipients = await db
       .select()
       .from(recipientsTable)
       .where(eq(recipientsTable.documentId, r.documentId));
-
-    // BUG-2: Re-count unsigned signers directly in DB so concurrent signers
-    // don't both read a stale snapshot and both miss the completion trigger.
-    const remaining = await db
-      .select({ n: count() })
-      .from(recipientsTable)
-      .where(
-        and(
-          eq(recipientsTable.documentId, r.documentId),
-          eq(recipientsTable.requiresSignature, true),
-          ne(recipientsTable.status, "signed"),
-        )
-      );
-
-    const allDone = Number(remaining[0].n) === 0;
-    const now = new Date();
-
-    if (allDone) {
-      await db
-        .update(documentsTable)
-        .set({ status: "completed", completedAt: now })
-        .where(eq(documentsTable.id, r.documentId));
-
-      await insertEvent({
-        documentId: r.documentId,
-        eventType: "completed",
-        actorName: "System",
-        actorEmail: null,
-      });
-    }
 
     // Respond immediately — background tasks (email + PDF sealing) must not
     // block the signer's browser.
@@ -589,11 +601,11 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
           const entries = signedRecipients.flatMap((sr) => {
             const rFields = allFields.filter((f) => f.recipientId === sr.id);
             const signedAt = sr.signedAt ? new Date(sr.signedAt) : now;
-            const name = (sr.id === r.id ? fullName : sr.signerName) || sr.teamName;
-            return rFields.filter((f) => f.fieldValue).map((f) => ({
-              fieldType: (f.fieldType || "signature") as "signature" | "initials" | "date" | "text",
-              fieldValue: f.fieldValue!,
-              signerName: name,
+            const signerName = (sr.id === r.id ? fullName : sr.signerName) || sr.teamName || sr.email;
+            return rFields.map((f) => ({
+              fieldType: (f.fieldValue ? (f.fieldType || "signature") : "text") as "signature" | "initials" | "date" | "text",
+              fieldValue: f.fieldValue ?? "Electronically Signed",
+              signerName,
               signedAt,
               page: f.page,
               x: f.x,
@@ -604,7 +616,7 @@ router.post("/sign/:token", signingRateLimit, async (req: Request, res: Response
           });
 
           const signerRecords: SignerRecord[] = signedRecipients.map((sr) => ({
-            name: (sr.id === r.id ? fullName : sr.signerName) || sr.teamName,
+            name: (sr.id === r.id ? fullName : sr.signerName) || sr.teamName || sr.email,
             email: sr.email,
             signedAt: sr.signedAt ? new Date(sr.signedAt) : now,
             ipAddress: sr.ipAddress,

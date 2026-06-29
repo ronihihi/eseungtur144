@@ -1,0 +1,57 @@
+Findings (ordered by severity)
+
+[High] Missing indexes on hottest filters will degrade badly on huge data
+
+documents is frequently filtered by uploader (uploaded_by) in API paths like artifacts/api-server/src/routes/documents.ts:39-43, but schema has no index for that column (lib/db/src/schema/documents.ts:5-20).
+recipients is filtered by email in artifacts/api-server/src/routes/signing.ts:173-183, but schema has no email index (lib/db/src/schema/recipients.ts:5-28).
+document_events is queried by document_id + ordered by time in artifacts/api-server/src/routes/signing.ts:819-823; schema only has single-column index on document_id (lib/db/src/schema/documentEvents.ts:14-16), so sorting can become expensive at scale.
+Impact: sequential scans + slow queries under growth/high concurrency.
+[High] Several endpoints are unbounded (no pagination), causing latency/memory spikes
+
+/documents loads all user docs + all related recipients, then sorts in memory (artifacts/api-server/src/routes/documents.ts:39-66).
+/admin/users returns entire user table (artifacts/api-server/src/routes/admin.ts:61-72).
+Audit builder loads up to 500 docs and all matching recipients, then builds/sorts big arrays in app memory (artifacts/api-server/src/routes/admin.ts:184-329).
+Impact: response time and RAM usage grow linearly with data.
+[High] Multi-step write flows are not transactional (risk of partial/corrupt state)
+
+Recipient setup updates/inserts/deletes across multiple statements without transaction (artifacts/api-server/src/routes/recipients.ts:21-97).
+Signing flow updates recipient, event log, signature fields, and document status in separate statements (artifacts/api-server/src/routes/signing.ts:475-542, 501-514).
+Impact: failures/restarts mid-request can leave inconsistent data.
+[Medium] Rate limiting is in-memory only (not stable in multi-instance load)
+
+express-rate-limit is configured without external store (artifacts/api-server/src/lib/rateLimiters.ts:1-37).
+Impact: limits are bypassable across instances and can become uneven under autoscaling.
+[Medium] Availability/config mismatch
+
+App startup hard-requires DATABASE_URL (artifacts/api-server/src/app.ts:17-34), but DB layer supports DO_DATABASE_URL fallback (lib/db/src/index.ts:12-14).
+Impact: deployment fragility (service can fail to boot despite valid DB config).
+Open questions / assumptions
+Expected peak RPS and max table sizes (documents, recipients, events)?
+Single instance or autoscaled multi-instance deployment?
+Is there already a migration system to safely add indexes online (CONCURRENTLY)?
+What to do to make it stable for huge load + huge DB
+Add indexes first (highest ROI)
+
+documents(uploaded_by, created_at desc)
+recipients(email) (or lower(email) if case-insensitive lookup everywhere)
+document_events(document_id, created_at)
+password_reset_tokens(user_id) (for delete-by-user path)
+Add pagination everywhere
+
+Use limit/offset or (better) keyset pagination for /documents, /admin/users, audit APIs.
+Return totals separately if needed.
+Move aggregates to SQL
+
+Avoid JS-side counting/sorting for large sets; use SQL count, grouped queries, and DB ordering.
+Wrap critical multi-step writes in DB transactions
+
+Recipient sync and signing completion paths should be atomic.
+Use distributed rate-limit store
+
+Redis/Postgres-backed store for express-rate-limit in production multi-instance setups.
+Operational hardening
+
+Add query timeout + statement timeout.
+Add slow-query logging and p95/p99 dashboards.
+Run load tests (k6/Locust) against production-like data volumes.
+No code changes were made in this pass; this is a stability review with prioritized fixes.

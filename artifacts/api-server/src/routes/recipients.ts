@@ -38,63 +38,65 @@ router.post("/documents/:id/recipients", requireAuth, async (req: Request, res: 
       return;
     }
 
-    const existing = await db
-      .select()
-      .from(recipientsTable)
-      .where(eq(recipientsTable.documentId, id));
-    existing.sort((a, b) => a.signOrder - b.signOrder);
+    await db.transaction(async (tx) => {
+      const existing = await tx
+        .select()
+        .from(recipientsTable)
+        .where(eq(recipientsTable.documentId, id));
+      existing.sort((a, b) => a.signOrder - b.signOrder);
 
-    const newList = parsed.data.recipients;
+      const newList = parsed.data.recipients;
 
-    for (let i = 0; i < newList.length; i++) {
-      const r = newList[i];
-      const existingRec = existing[i];
-      const requiresReview = r.requiresReview ?? false;
-      const requiresSignature = r.requiresSignature ?? true;
-      const reviewChecklistInput = r.reviewChecklist;
-      const reviewChecklist = reviewChecklistInput
-        ? reviewChecklistInput.map((item) => ({ label: item.label, checked: false }))
-        : null;
+      for (let i = 0; i < newList.length; i++) {
+        const r = newList[i];
+        const existingRec = existing[i];
+        const requiresReview = r.requiresReview ?? false;
+        const requiresSignature = r.requiresSignature ?? true;
+        const reviewChecklistInput = r.reviewChecklist;
+        const reviewChecklist = reviewChecklistInput
+          ? reviewChecklistInput.map((item) => ({ label: item.label, checked: false }))
+          : null;
 
-      if (existingRec) {
-        await db
-          .update(recipientsTable)
-          .set({
+        if (existingRec) {
+          await tx
+            .update(recipientsTable)
+            .set({
+              teamName: r.teamName,
+              email: r.email,
+              signOrder: i + 1,
+              requiresReview,
+              requiresSignature,
+              reviewStatus: requiresReview ? (existingRec.reviewStatus ?? "pending") : null,
+              reviewChecklist: reviewChecklist as null,
+            })
+            .where(eq(recipientsTable.id, existingRec.id));
+        } else {
+          // Token expires 90 days from creation
+          const tokenExpiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+          await tx.insert(recipientsTable).values({
+            id: uuidv4(),
+            documentId: id,
             teamName: r.teamName,
             email: r.email,
             signOrder: i + 1,
+            status: "pending",
+            token: uuidv4(),
             requiresReview,
             requiresSignature,
-            reviewStatus: requiresReview ? (existingRec.reviewStatus ?? "pending") : null,
+            reviewStatus: requiresReview ? "pending" : null,
             reviewChecklist: reviewChecklist as null,
-          })
-          .where(eq(recipientsTable.id, existingRec.id));
-      } else {
-        // Token expires 90 days from creation
-        const tokenExpiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-        await db.insert(recipientsTable).values({
-          id: uuidv4(),
-          documentId: id,
-          teamName: r.teamName,
-          email: r.email,
-          signOrder: i + 1,
-          status: "pending",
-          token: uuidv4(),
-          requiresReview,
-          requiresSignature,
-          reviewStatus: requiresReview ? "pending" : null,
-          reviewChecklist: reviewChecklist as null,
-          tokenExpiresAt,
-        });
+            tokenExpiresAt,
+          });
+        }
       }
-    }
 
-    if (existing.length > newList.length) {
-      for (const removed of existing.slice(newList.length)) {
-        await db.delete(signatureFieldsTable).where(eq(signatureFieldsTable.recipientId, removed.id));
-        await db.delete(recipientsTable).where(eq(recipientsTable.id, removed.id));
+      if (existing.length > newList.length) {
+        for (const removed of existing.slice(newList.length)) {
+          await tx.delete(signatureFieldsTable).where(eq(signatureFieldsTable.recipientId, removed.id));
+          await tx.delete(recipientsTable).where(eq(recipientsTable.id, removed.id));
+        }
       }
-    }
+    });
 
     res.json({ success: true });
   } catch (err) {
