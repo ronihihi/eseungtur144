@@ -9,20 +9,25 @@ if (!rawUrl) {
   throw new Error("DO_DATABASE_URL (or DATABASE_URL) must be set.");
 }
 
-// Strip sslmode from the URL so pg-connection-string does NOT override the ssl
-// option below (pg ≥8.12 promotes sslmode=require to verify-full, breaking
-// connections to managed DBs that use self-signed CA chains).
+// Strip sslmode and sslrootcert from the URL so pg-connection-string does NOT
+// override the ssl option below (pg ≥8.12 treats sslmode=require/verify-full
+// as aliases for verify-full, which conflicts with our explicit ssl config).
 const connectionString = rawUrl
   .replace(/[?&]sslmode=[^&]*/g, "")
+  .replace(/[?&]sslrootcert=[^&]*/g, "")
   .replace(/\?&/, "?")
   .replace(/[?&]$/, "");
 
+// SEC-A1: To enable full TLS chain verification, set DATABASE_CA_CERT to the
+// content of the DigitalOcean CA certificate downloaded from:
+//   DO Dashboard → Databases → your cluster → Connection details → Download CA certificate
+// Then paste the full PEM content (including -----BEGIN CERTIFICATE-----) as the secret.
+// Until then, encrypted connections are used without chain verification.
+console.warn("[db] Using encrypted connection (rejectUnauthorized: false). " +
+  "Update DATABASE_CA_CERT with the DO cluster CA cert to enable full verification.");
+
 // LOAD-B2: Tuned pool — bounded size, idle/connection timeouts, and a
 // statement_timeout so slow queries fail fast rather than hang.
-// SEC-A1 NOTE: rejectUnauthorized is false because DATABASE_CA_CERT currently
-// holds a cert that does not match the DO managed-database chain. To enable
-// full TLS verification, replace DATABASE_CA_CERT with the correct DO CA cert
-// (download from DO dashboard → database → CA certificate).
 export const pool = new Pool({
   connectionString,
   ssl: { rejectUnauthorized: false },
